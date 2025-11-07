@@ -537,35 +537,76 @@
   "endpoint": "https://api.anthropic.com/v1/messages",
   "model_id": "claude-3-5-sonnet-20241022",
   ${apiKeyRef},
+
+  // Sampling parameters
   "max_tokens": 8096,
-  "temperature": 1.0,
-  "top_p": 1.0,
-  "top_k": null,
-  "stop_sequences": null
+  "temperature": 1.0,  // 0.0-1.0, higher = more random
+  "top_p": 1.0,  // 0.0-1.0, nucleus sampling
+  "top_k": null,  // Only sample from top K options
+  "stop_sequences": null,  // Array of strings to stop generation
+
+  // Metadata (for tracking/filtering)
+  "metadata": null,  // {"user_id": "123"}
+
+  // Custom headers
+  "headers": {},  // {"X-Custom-Header": "value"}
+
+  // Beta features (extended thinking, prompt caching, etc.)
+  "beta_headers": []  // ["prompt-caching-2024-07-31", "max-tokens-3-5-sonnet-2024-07-15"]
 }`,
                     openai: `{
   "template": "openai",
   "endpoint": "https://api.openai.com/v1/chat/completions",
   "model_id": "gpt-4-turbo",
   ${apiKeyRef},
-  "max_tokens": null,
-  "temperature": 1.0,
-  "top_p": 1.0,
-  "frequency_penalty": 0,
-  "presence_penalty": 0,
-  "stop": null
+
+  // Sampling parameters
+  "max_tokens": null,  // Max tokens to generate
+  "temperature": 1.0,  // 0.0-2.0, higher = more random
+  "top_p": 1.0,  // 0.0-1.0, nucleus sampling
+  "frequency_penalty": 0,  // -2.0 to 2.0, penalize frequent tokens
+  "presence_penalty": 0,  // -2.0 to 2.0, penalize tokens that appeared
+  "stop": null,  // String or array of strings to stop at
+
+  // Response options
+  "n": 1,  // Number of completions to generate
+  "stream_options": null,  // {"include_usage": true}
+  "response_format": null,  // {"type": "json_object"} for JSON mode
+  "seed": null,  // Integer for deterministic sampling
+  "logprobs": null,  // Return log probabilities
+  "top_logprobs": null,  // Number of most likely tokens to return (0-20)
+  "user": null,  // Unique identifier for end-user
+
+  // Function calling
+  "tools": null,  // [{"type": "function", "function": {...}}]
+  "tool_choice": null,  // "none", "auto", or {"type": "function", "function": {"name": "..."}}
+
+  // Custom headers
+  "headers": {}  // {"X-Custom-Header": "value"}
 }`,
                     google: `{
   "template": "google",
   "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:streamGenerateContent",
   "model_id": "gemini-1.5-pro",
   ${apiKeyRef},
-  "temperature": 1.0,
-  "top_p": 1.0,
-  "top_k": null,
-  "max_output_tokens": null,
-  "candidate_count": 1,
-  "stop_sequences": null
+
+  // Sampling parameters
+  "temperature": 1.0,  // 0.0-2.0, higher = more random
+  "top_p": 1.0,  // 0.0-1.0, nucleus sampling
+  "top_k": null,  // Only sample from top K options
+  "max_output_tokens": null,  // Max tokens to generate
+  "candidate_count": 1,  // Number of responses to generate
+  "stop_sequences": null,  // Array of strings to stop generation
+
+  // Safety settings
+  "safety_settings": null,  // [{"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"}]
+
+  // Function calling
+  "tools": null,  // [{"function_declarations": [{...}]}]
+  "tool_config": null,  // {"function_calling_config": {"mode": "AUTO"}}
+
+  // Custom headers
+  "headers": {}  // {"X-Custom-Header": "value"}
 }`
                 };
 
@@ -1064,6 +1105,9 @@
             if (model.stop_sequences && model.stop_sequences.length > 0) {
                 body.stop_sequences = model.stop_sequences;
             }
+            if (model.metadata) {
+                body.metadata = model.metadata;
+            }
 
             if (activePromptId) {
                 const prompt = systemPrompts.find(p => p.id === activePromptId);
@@ -1076,17 +1120,29 @@
 
             const apiKey = resolveApiKey(model);
 
+            // Build headers
+            const headers = {
+                'Content-Type': 'application/json',
+                'anthropic-version': '2023-06-01',
+                'anthropic-dangerous-direct-browser-access': 'true',
+                'x-api-key': apiKey
+            };
+
+            // Add custom headers
+            if (model.headers) {
+                Object.assign(headers, model.headers);
+            }
+
+            // Add beta headers (features like extended thinking, prompt caching, etc.)
+            if (model.beta_headers && model.beta_headers.length > 0) {
+                headers['anthropic-beta'] = model.beta_headers.join(',');
+            }
+
             let response;
             try {
                 response = await fetch(model.endpoint, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'anthropic-version': '2023-06-01',
-                        'anthropic-dangerous-direct-browser-access': 'true',
-                        'x-api-key': apiKey,
-                        ...(model.headers || {})
-                    },
+                    headers: headers,
                     body: JSON.stringify(body)
                 });
             } catch (e) {
@@ -1171,6 +1227,33 @@
             if (model.stop && model.stop.length > 0) {
                 body.stop = model.stop;
             }
+            if (model.n !== undefined && model.n !== null) {
+                body.n = model.n;
+            }
+            if (model.stream_options) {
+                body.stream_options = model.stream_options;
+            }
+            if (model.response_format) {
+                body.response_format = model.response_format;
+            }
+            if (model.seed !== undefined && model.seed !== null) {
+                body.seed = model.seed;
+            }
+            if (model.logprobs !== undefined && model.logprobs !== null) {
+                body.logprobs = model.logprobs;
+            }
+            if (model.top_logprobs !== undefined && model.top_logprobs !== null) {
+                body.top_logprobs = model.top_logprobs;
+            }
+            if (model.user) {
+                body.user = model.user;
+            }
+            if (model.tools) {
+                body.tools = model.tools;
+            }
+            if (model.tool_choice) {
+                body.tool_choice = model.tool_choice;
+            }
 
             if (activePromptId) {
                 const prompt = systemPrompts.find(p => p.id === activePromptId);
@@ -1183,15 +1266,22 @@
 
             const apiKey = resolveApiKey(model);
 
+            // Build headers
+            const headers = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            };
+
+            // Add custom headers
+            if (model.headers) {
+                Object.assign(headers, model.headers);
+            }
+
             let response;
             try {
                 response = await fetch(model.endpoint, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${apiKey}`,
-                        ...(model.headers || {})
-                    },
+                    headers: headers,
                     body: JSON.stringify(body)
                 });
             } catch (e) {
@@ -1306,6 +1396,21 @@
                 body.generationConfig = generationConfig;
             }
 
+            // Add safety settings
+            if (model.safety_settings) {
+                body.safetySettings = model.safety_settings;
+            }
+
+            // Add tools
+            if (model.tools) {
+                body.tools = model.tools;
+            }
+
+            // Add tool config
+            if (model.tool_config) {
+                body.toolConfig = model.tool_config;
+            }
+
             // Add system instruction if present
             if (activePromptId) {
                 const prompt = systemPrompts.find(p => p.id === activePromptId);
@@ -1322,14 +1427,21 @@
 
             console.log('Google request:', { endpoint, body });
 
+            // Build headers
+            const headers = {
+                'Content-Type': 'application/json'
+            };
+
+            // Add custom headers
+            if (model.headers) {
+                Object.assign(headers, model.headers);
+            }
+
             let response;
             try {
                 response = await fetch(endpoint, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(model.headers || {})
-                    },
+                    headers: headers,
                     body: JSON.stringify(body)
                 });
             } catch (e) {
