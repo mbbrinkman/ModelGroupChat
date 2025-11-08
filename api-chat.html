@@ -675,6 +675,7 @@
                 radio.addEventListener('change', (e) => {
                     multiModelMode = e.target.value;
                     updateUIForMode();
+                    updateModelPickerButton();
                     saveToStorage();
                 });
             });
@@ -1468,6 +1469,37 @@
             return model.api_key;
         }
 
+        function buildSystemPrompt(model) {
+            let systemPrompt = '';
+
+            // Add model identity information if in multi-model mode
+            if (selectedModelIndices.length > 1 && model.name) {
+                systemPrompt = `You are ${model.name}. This is your identity in this conversation.\n\n`;
+
+                // Add information about other models in the conversation
+                const otherModels = selectedModelIndices
+                    .map(idx => models[idx])
+                    .filter(m => m.name !== model.name)
+                    .map(m => m.name);
+
+                if (otherModels.length > 0) {
+                    systemPrompt += `You are conversing with: ${otherModels.join(', ')}.\n\n`;
+                }
+            }
+
+            // Use activePromptId if set, otherwise fall back to model's system_prompt
+            if (activePromptId) {
+                const prompt = systemPrompts.find(p => p.id === activePromptId);
+                if (prompt) {
+                    systemPrompt += prompt.content;
+                }
+            } else if (model.system_prompt && model.system_prompt.trim()) {
+                systemPrompt += model.system_prompt;
+            }
+
+            return systemPrompt.trim();
+        }
+
         async function streamResponse(model, assistantMessage) {
             const messages = buildMessagesForAPI(model, assistantMessage);
 
@@ -1581,14 +1613,10 @@
                 body.metadata = model.metadata;
             }
 
-            // Use activePromptId if set, otherwise fall back to model's system_prompt
-            if (activePromptId) {
-                const prompt = systemPrompts.find(p => p.id === activePromptId);
-                if (prompt) {
-                    body.system = prompt.content;
-                }
-            } else if (model.system_prompt && model.system_prompt.trim()) {
-                body.system = model.system_prompt;
+            // Add system prompt with identity
+            const systemPrompt = buildSystemPrompt(model);
+            if (systemPrompt) {
+                body.system = systemPrompt;
             }
 
             console.log('Anthropic request:', { endpoint: model.endpoint, body });
@@ -1730,14 +1758,10 @@
                 body.tool_choice = model.tool_choice;
             }
 
-            // Use activePromptId if set, otherwise fall back to model's system_prompt
-            if (activePromptId) {
-                const prompt = systemPrompts.find(p => p.id === activePromptId);
-                if (prompt) {
-                    body.messages.unshift({ role: 'system', content: prompt.content });
-                }
-            } else if (model.system_prompt && model.system_prompt.trim()) {
-                body.messages.unshift({ role: 'system', content: model.system_prompt });
+            // Add system prompt with identity
+            const systemPrompt = buildSystemPrompt(model);
+            if (systemPrompt) {
+                body.messages.unshift({ role: 'system', content: systemPrompt });
             }
 
             console.log('OpenAI request:', { endpoint: model.endpoint, body });
@@ -1865,14 +1889,10 @@
                 body.tool_choice = model.tool_choice;
             }
 
-            // Use activePromptId if set, otherwise fall back to model's system_prompt
-            if (activePromptId) {
-                const prompt = systemPrompts.find(p => p.id === activePromptId);
-                if (prompt) {
-                    body.messages.unshift({ role: 'system', content: prompt.content });
-                }
-            } else if (model.system_prompt && model.system_prompt.trim()) {
-                body.messages.unshift({ role: 'system', content: model.system_prompt });
+            // Add system prompt with identity
+            const systemPrompt = buildSystemPrompt(model);
+            if (systemPrompt) {
+                body.messages.unshift({ role: 'system', content: systemPrompt });
             }
 
             console.log('xAI request:', { endpoint: model.endpoint, body });
@@ -2014,11 +2034,10 @@
                 body.provider = model.provider;
             }
 
-            if (activePromptId) {
-                const prompt = systemPrompts.find(p => p.id === activePromptId);
-                if (prompt) {
-                    body.messages.unshift({ role: 'system', content: prompt.content });
-                }
+            // Add system prompt with identity
+            const systemPrompt = buildSystemPrompt(model);
+            if (systemPrompt) {
+                body.messages.unshift({ role: 'system', content: systemPrompt });
             }
 
             console.log('OpenRouter request:', { endpoint: model.endpoint, body });
@@ -2170,18 +2189,11 @@
                 body.toolConfig = model.tool_config;
             }
 
-            // Add system instruction if present
-            // Use activePromptId if set, otherwise fall back to model's system_prompt
-            if (activePromptId) {
-                const prompt = systemPrompts.find(p => p.id === activePromptId);
-                if (prompt) {
-                    body.system_instruction = {
-                        parts: [{ text: prompt.content }]
-                    };
-                }
-            } else if (model.system_prompt && model.system_prompt.trim()) {
+            // Add system instruction with identity
+            const systemPrompt = buildSystemPrompt(model);
+            if (systemPrompt) {
                 body.system_instruction = {
-                    parts: [{ text: model.system_prompt }]
+                    parts: [{ text: systemPrompt }]
                 };
             }
 
