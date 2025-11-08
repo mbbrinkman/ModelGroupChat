@@ -1476,14 +1476,24 @@
             if (selectedModelIndices.length > 1 && model.name) {
                 systemPrompt = `You are ${model.name}. This is your identity in this conversation.\n\n`;
 
-                // Add information about other models in the conversation
+                // Build list of who they're conversing with
+                const conversants = [];
+
+                // Add Human to the list if NOT in autonomous mode
+                if (multiModelMode !== 'autonomous') {
+                    conversants.push('Human');
+                }
+
+                // Add other models
                 const otherModels = selectedModelIndices
                     .map(idx => models[idx])
                     .filter(m => m.name !== model.name)
                     .map(m => m.name);
 
-                if (otherModels.length > 0) {
-                    systemPrompt += `You are conversing with: ${otherModels.join(', ')}.\n\n`;
+                conversants.push(...otherModels);
+
+                if (conversants.length > 0) {
+                    systemPrompt += `You are conversing with: ${conversants.join(', ')}.\n\n`;
                 }
             }
 
