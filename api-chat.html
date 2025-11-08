@@ -302,6 +302,23 @@
             flex-shrink: 0;
         }
 
+        .model-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .model-name {
+            font-weight: 600;
+            color: #e0e0e0;
+        }
+
+        .system-prompt-preview {
+            font-size: 11px;
+            color: #888;
+            margin-top: 2px;
+            word-wrap: break-word;
+        }
+
         .mode-selector {
             margin-bottom: 15px;
             padding: 10px;
@@ -838,19 +855,17 @@
 
                     // Create a div for model info
                     const modelInfo = document.createElement('div');
-                    modelInfo.style.flex = '1';
+                    modelInfo.className = 'model-info';
 
                     const modelName = document.createElement('div');
+                    modelName.className = 'model-name';
                     modelName.textContent = model.name;
-                    modelName.style.fontWeight = '600';
                     modelInfo.appendChild(modelName);
 
                     // Show system prompt if it exists
                     if (model.system_prompt && model.system_prompt.trim()) {
                         const promptPreview = document.createElement('div');
-                        promptPreview.style.fontSize = '11px';
-                        promptPreview.style.color = '#888';
-                        promptPreview.style.marginTop = '2px';
+                        promptPreview.className = 'system-prompt-preview';
                         const previewText = model.system_prompt.length > 60
                             ? model.system_prompt.substring(0, 60) + '...'
                             : model.system_prompt;
