@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Model Chat</title>
+    <title>OpenRouter Multi-Model Chat</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
@@ -544,26 +544,36 @@
     <div id="help-tab" class="tab-content">
         <div class="settings-container">
             <div class="settings-section">
-                <h2>Multi-Model API Chat - Help & Customization Guide</h2>
+                <h2>OpenRouter Multi-Model Chat - Help & Guide</h2>
 
                 <h3>Quick Start</h3>
                 <ol>
-                    <li><strong>Add API Keys:</strong> Go to Settings → Add API Key section</li>
-                    <li><strong>Add Models:</strong> Go to Settings → Add New Model, select a template, customize the config</li>
+                    <li><strong>Add OpenRouter API Key:</strong> Go to Settings → Add API Key section (get your key from openrouter.ai)</li>
+                    <li><strong>Add Models:</strong> Go to Settings → Add New Model, customize the config with your desired model</li>
                     <li><strong>Select Models:</strong> Click "Select Models" button, check the models you want to use</li>
                     <li><strong>Choose Mode:</strong> In model picker, select Parallel/Serial/Rotating/Autonomous</li>
                     <li><strong>Chat:</strong> Type your message and click Send!</li>
                 </ol>
 
                 <h3>Model Configuration</h3>
-                <p>Each model is defined by a JSON configuration with NO outer braces:</p>
-                <pre style="background: #1a1a1a; padding: 12px; border-radius: 6px; overflow-x: auto;">"template": "anthropic",
-"endpoint": "https://api.anthropic.com/v1/messages",
-"model_id": "claude-3-5-sonnet-20241022",
+                <p>Each model is defined by a JSON configuration with NO outer braces. Example:</p>
+                <pre style="background: #1a1a1a; padding: 12px; border-radius: 6px; overflow-x: auto;">"template": "openrouter",
+"endpoint": "https://openrouter.ai/api/v1/chat/completions",
+"model_id": "anthropic/claude-3.5-sonnet",
 "api_key_id": "123456",
 "system_prompt": "You are a helpful assistant",
-"max_tokens": 8096,
+"max_tokens": 4096,
 "temperature": 1.0</pre>
+
+                <h4>Available OpenRouter Models</h4>
+                <p>You can use any model from OpenRouter. Popular options include:</p>
+                <ul>
+                    <li><code>anthropic/claude-3.5-sonnet</code> - Claude 3.5 Sonnet</li>
+                    <li><code>openai/gpt-4-turbo</code> - GPT-4 Turbo</li>
+                    <li><code>google/gemini-pro</code> - Google Gemini Pro</li>
+                    <li><code>meta-llama/llama-3-70b-instruct</code> - Llama 3 70B</li>
+                    <li>...and many more at <a href="https://openrouter.ai/models" target="_blank" style="color: #4a9eff;">openrouter.ai/models</a></li>
+                </ul>
 
                 <h4>Per-Model System Prompts</h4>
                 <p>Set <code>"system_prompt": "Your prompt here"</code> in each model's config to give it a unique personality.</p>
@@ -587,14 +597,16 @@
                     <li><strong>Autonomous:</strong> "You are [Model Name]. You are conversing with: [Other Models]." (no Human)</li>
                 </ul>
 
-                <h3>Supported Providers</h3>
+                <h3>About OpenRouter</h3>
+                <p>OpenRouter provides unified access to 100+ AI models from multiple providers through a single API:</p>
                 <ul>
                     <li><strong>Anthropic:</strong> Claude models (Sonnet, Opus, Haiku)</li>
-                    <li><strong>OpenAI:</strong> GPT-4, GPT-3.5, etc.</li>
+                    <li><strong>OpenAI:</strong> GPT-4, GPT-3.5, and more</li>
                     <li><strong>Google:</strong> Gemini models</li>
-                    <li><strong>xAI:</strong> Grok models</li>
-                    <li><strong>OpenRouter:</strong> Access to multiple providers through one API</li>
+                    <li><strong>Meta:</strong> Llama models</li>
+                    <li><strong>Mistral, Cohere, and many others</strong></li>
                 </ul>
+                <p>Visit <a href="https://openrouter.ai" target="_blank" style="color: #4a9eff;">openrouter.ai</a> to get your API key and browse available models.</p>
 
                 <h3>Advanced Features</h3>
                 <h4>Edit AI Responses</h4>
@@ -607,17 +619,19 @@
                 <p>Click "Edit" button on your own messages to revise and branch the conversation from that point.</p>
 
                 <h4>File Attachments</h4>
-                <p>Click 📎 to attach images. Supported by Anthropic, OpenAI, and Google models.</p>
+                <p>Click 📎 to attach images. Support varies by model - most vision-capable models on OpenRouter support image attachments.</p>
 
-                <h4>Model-Specific Parameters</h4>
-                <p>Each template includes all available parameters for that provider:</p>
+                <h4>OpenRouter Parameters</h4>
+                <p>Customize your model behavior with these parameters:</p>
                 <ul>
                     <li><code>temperature</code>: Randomness (0.0-2.0)</li>
                     <li><code>max_tokens</code>: Maximum response length</li>
                     <li><code>top_p</code>: Nucleus sampling</li>
-                    <li><code>beta_headers</code>: Anthropic beta features</li>
+                    <li><code>frequency_penalty</code>: Reduce repetition</li>
+                    <li><code>presence_penalty</code>: Encourage topic diversity</li>
                     <li><code>tools</code>: Function calling config</li>
-                    <li>...and many more</li>
+                    <li><code>provider</code>: Force specific provider</li>
+                    <li><code>transforms</code>: Content filtering options</li>
                 </ul>
 
                 <h3>Data Management</h3>
@@ -680,16 +694,8 @@
             </div>
             <div class="settings-section">
                 <h3>Add New Model</h3>
-                <input type="text" id="new-model-name" placeholder="Model name (e.g., My Claude Model)" style="margin-bottom: 8px;">
-                <select id="new-model-template" style="margin-bottom: 8px;">
-                    <option value="">Select a template...</option>
-                    <option value="anthropic">Anthropic (Claude)</option>
-                    <option value="openai">OpenAI (GPT)</option>
-                    <option value="google">Google (Gemini)</option>
-                    <option value="xai">xAI (Grok)</option>
-                    <option value="openrouter">OpenRouter</option>
-                </select>
-                <textarea id="new-model-config" placeholder="Model configuration will appear here when you select a template..." style="min-height: 250px;"></textarea>
+                <input type="text" id="new-model-name" placeholder="Model name (e.g., Claude 3.5 Sonnet)" style="margin-bottom: 8px;">
+                <textarea id="new-model-config" placeholder="Model configuration (JSON)..." style="min-height: 250px;"></textarea>
                 <button class="primary" onclick="addModel()">Add Model</button>
             </div>
             <div class="settings-section">
@@ -834,93 +840,14 @@
             // Autonomous button
             document.getElementById('auto-btn').addEventListener('click', toggleAutonomous);
 
-            // Template selector - show template config
-            document.getElementById('new-model-template').addEventListener('change', (e) => {
-                const template = e.target.value;
-                const configTextarea = document.getElementById('new-model-config');
+            // Pre-populate OpenRouter template on page load
+            const configTextarea = document.getElementById('new-model-config');
+            const openrouterKeys = apiKeys.filter(k => k.provider === 'openrouter');
+            const apiKeyRef = openrouterKeys.length > 0
+                ? `"api_key_id": "${openrouterKeys[0].id}"`
+                : `"api_key": "your-openrouter-api-key-here"`;
 
-                // Get available API keys for the selected template
-                const templateKeys = apiKeys.filter(k => k.provider === template);
-                const apiKeyRef = templateKeys.length > 0
-                    ? `"api_key_id": "${templateKeys[0].id}"`
-                    : `"api_key": "your-api-key-here"`;
-
-                const templates = {
-                    anthropic: `"template": "anthropic",
-  "endpoint": "https://api.anthropic.com/v1/messages",
-  "model_id": "claude-3-5-sonnet-20241022",
-  ${apiKeyRef},
-  "system_prompt": "",
-  "max_tokens": 8096,
-  "temperature": 1.0,
-  "top_p": 1.0,
-  "top_k": null,
-  "stop_sequences": null,
-  "metadata": null,
-  "headers": {},
-  "beta_headers": []
-`,
-                    openai: `"template": "openai",
-  "endpoint": "https://api.openai.com/v1/chat/completions",
-  "model_id": "gpt-4-turbo",
-  ${apiKeyRef},
-  "system_prompt": "",
-  "max_tokens": null,
-  "temperature": 1.0,
-  "top_p": 1.0,
-  "frequency_penalty": 0,
-  "presence_penalty": 0,
-  "stop": null,
-  "n": 1,
-  "stream_options": null,
-  "response_format": null,
-  "seed": null,
-  "logprobs": null,
-  "top_logprobs": null,
-  "user": null,
-  "tools": null,
-  "tool_choice": null,
-  "headers": {}
-`,
-                    google: `"template": "google",
-  "endpoint": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:streamGenerateContent",
-  "model_id": "gemini-1.5-pro",
-  ${apiKeyRef},
-  "system_prompt": "",
-  "temperature": 1.0,
-  "top_p": 1.0,
-  "top_k": null,
-  "max_output_tokens": null,
-  "candidate_count": 1,
-  "stop_sequences": null,
-  "safety_settings": null,
-  "tools": null,
-  "tool_config": null,
-  "headers": {}
-`,
-                    xai: `"template": "xai",
-  "endpoint": "https://api.x.ai/v1/chat/completions",
-  "model_id": "grok-beta",
-  ${apiKeyRef},
-  "system_prompt": "",
-  "max_tokens": null,
-  "temperature": 1.0,
-  "top_p": 1.0,
-  "frequency_penalty": 0,
-  "presence_penalty": 0,
-  "stop": null,
-  "n": 1,
-  "stream_options": null,
-  "response_format": null,
-  "seed": null,
-  "logprobs": null,
-  "top_logprobs": null,
-  "user": null,
-  "tools": null,
-  "tool_choice": null,
-  "headers": {}
-`,
-                    openrouter: `"template": "openrouter",
+            configTextarea.value = `"template": "openrouter",
   "endpoint": "https://openrouter.ai/api/v1/chat/completions",
   "model_id": "anthropic/claude-3.5-sonnet",
   ${apiKeyRef},
@@ -945,11 +872,7 @@
   "route": null,
   "provider": null,
   "headers": {}
-`
-                };
-
-                configTextarea.value = templates[template] || '';
-            });
+`;
         }
 
         function switchTab(tabName) {
@@ -1304,7 +1227,6 @@
 
                 // Clear form
                 document.getElementById('new-model-name').value = '';
-                document.getElementById('new-model-template').value = '';
                 document.getElementById('new-model-config').value = '';
 
                 alert('Model added successfully!');
@@ -1318,7 +1240,6 @@
             const { name, ...config } = model;
 
             document.getElementById('new-model-name').value = name;
-            document.getElementById('new-model-template').value = config.template;
 
             // Convert config back to formatted JSON without outer braces
             const configJson = JSON.stringify(config, null, 2);
@@ -1672,20 +1593,7 @@
 
         async function streamResponse(model, assistantMessage) {
             const messages = buildMessagesForAPI(model, assistantMessage);
-
-            if (model.template === 'anthropic') {
-                await streamAnthropic(model, messages, assistantMessage);
-            } else if (model.template === 'openai') {
-                await streamOpenAI(model, messages, assistantMessage);
-            } else if (model.template === 'google') {
-                await streamGoogle(model, messages, assistantMessage);
-            } else if (model.template === 'xai') {
-                await streamXAI(model, messages, assistantMessage);
-            } else if (model.template === 'openrouter') {
-                await streamOpenRouter(model, messages, assistantMessage);
-            } else {
-                await streamCustom(model, messages, assistantMessage);
-            }
+            await streamOpenRouter(model, messages, assistantMessage);
         }
 
         function buildMessagesForAPI(model, excludeMessage = null) {
@@ -1700,7 +1608,7 @@
 
                     // Build content based on whether we have files
                     if (msg.files && msg.files.length > 0) {
-                        // Has files - use array format
+                        // Has files - use array format (OpenAI-compatible)
                         content = [];
 
                         if (msg.content) {
@@ -1709,49 +1617,15 @@
 
                         for (const file of msg.files) {
                             if (file.type.startsWith('image/')) {
-                                if (model.template === 'anthropic') {
-                                    // Anthropic format
-                                    content.push({
-                                        type: 'image',
-                                        source: {
-                                            type: 'base64',
-                                            media_type: file.type,
-                                            data: file.base64
-                                        }
-                                    });
-                                } else if (model.template === 'openai' || model.template === 'xai' || model.template === 'openrouter') {
-                                    // OpenAI-compatible format
-                                    content.push({
-                                        type: 'image_url',
-                                        image_url: {
-                                            url: `data:${file.type};base64,${file.base64}`
-                                        }
-                                    });
-                                } else if (model.template === 'google') {
-                                    // Google format - handled separately below
-                                    content.push({
-                                        type: 'google_image',
-                                        mime_type: file.type,
-                                        data: file.base64
-                                    });
-                                } else {
-                                    // Unsupported - just mention it
-                                    content.push({
-                                        type: 'text',
-                                        text: `[Attached image: ${file.name}]`
-                                    });
-                                }
-                            } else if (file.type === 'application/pdf' && model.template === 'anthropic') {
+                                // OpenAI-compatible format (used by OpenRouter)
                                 content.push({
-                                    type: 'document',
-                                    source: {
-                                        type: 'base64',
-                                        media_type: 'application/pdf',
-                                        data: file.base64
+                                    type: 'image_url',
+                                    image_url: {
+                                        url: `data:${file.type};base64,${file.base64}`
                                     }
                                 });
                             } else {
-                                // For other unsupported file types, just mention it
+                                // For other file types, just mention it
                                 content.push({
                                     type: 'text',
                                     text: `[Attached file: ${file.name}]`
@@ -1787,383 +1661,6 @@
             }
 
             return messages;
-        }
-
-        async function streamAnthropic(model, messages, assistantMessage) {
-            const body = {
-                model: model.model_id,
-                max_tokens: model.max_tokens || 8096,
-                messages: messages,
-                stream: true
-            };
-
-            // Add optional parameters if specified
-            if (model.temperature !== undefined && model.temperature !== null) {
-                body.temperature = model.temperature;
-            }
-            if (model.top_p !== undefined && model.top_p !== null) {
-                body.top_p = model.top_p;
-            }
-            if (model.top_k !== undefined && model.top_k !== null) {
-                body.top_k = model.top_k;
-            }
-            if (model.stop_sequences && model.stop_sequences.length > 0) {
-                body.stop_sequences = model.stop_sequences;
-            }
-            if (model.metadata) {
-                body.metadata = model.metadata;
-            }
-
-            // Add system prompt with identity
-            const systemPrompt = buildSystemPrompt(model);
-            if (systemPrompt) {
-                body.system = systemPrompt;
-            }
-
-            console.log('Anthropic request:', { endpoint: model.endpoint, body });
-
-            const apiKey = resolveApiKey(model);
-
-            // Build headers
-            const headers = {
-                'Content-Type': 'application/json',
-                'anthropic-version': '2023-06-01',
-                'anthropic-dangerous-direct-browser-access': 'true',
-                'x-api-key': apiKey
-            };
-
-            // Add custom headers
-            if (model.headers) {
-                Object.assign(headers, model.headers);
-            }
-
-            // Add beta headers (features like extended thinking, prompt caching, etc.)
-            if (model.beta_headers && model.beta_headers.length > 0) {
-                headers['anthropic-beta'] = model.beta_headers.join(',');
-            }
-
-            let response;
-            try {
-                response = await fetch(model.endpoint, {
-                    method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify(body)
-                });
-            } catch (e) {
-                console.error('Fetch error:', e);
-                throw new Error(`Network error: ${e.message}. Check your internet connection and API endpoint.`);
-            }
-
-            if (!response.ok) {
-                let errorText;
-                try {
-                    errorText = await response.text();
-                    console.error('API error response:', errorText);
-                } catch (e) {
-                    errorText = 'Could not read error response';
-                }
-                throw new Error(`API error ${response.status}: ${errorText}`);
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop();
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const data = line.slice(6);
-                        if (data === '[DONE]') continue;
-                        
-                        try {
-                            const parsed = JSON.parse(data);
-                            
-                            if (parsed.type === 'content_block_start') {
-                                if (parsed.content_block?.type === 'thinking') {
-                                    assistantMessage.hasThinking = true;
-                                }
-                            } else if (parsed.type === 'content_block_delta') {
-                                if (parsed.delta?.type === 'thinking_delta') {
-                                    assistantMessage.thinking += parsed.delta.thinking || '';
-                                } else if (parsed.delta?.type === 'text_delta') {
-                                    assistantMessage.content += parsed.delta.text || '';
-                                }
-                                renderConversation();
-                            }
-                        } catch (e) {
-                            console.error('Error parsing SSE:', e, 'Line:', line);
-                        }
-                    }
-                }
-            }
-        }
-
-        async function streamOpenAI(model, messages, assistantMessage) {
-            const body = {
-                model: model.model_id,
-                messages: messages,
-                stream: true
-            };
-
-            // Add optional parameters if specified
-            if (model.max_tokens !== undefined && model.max_tokens !== null) {
-                body.max_tokens = model.max_tokens;
-            }
-            if (model.temperature !== undefined && model.temperature !== null) {
-                body.temperature = model.temperature;
-            }
-            if (model.top_p !== undefined && model.top_p !== null) {
-                body.top_p = model.top_p;
-            }
-            if (model.frequency_penalty !== undefined && model.frequency_penalty !== null) {
-                body.frequency_penalty = model.frequency_penalty;
-            }
-            if (model.presence_penalty !== undefined && model.presence_penalty !== null) {
-                body.presence_penalty = model.presence_penalty;
-            }
-            if (model.stop && model.stop.length > 0) {
-                body.stop = model.stop;
-            }
-            if (model.n !== undefined && model.n !== null) {
-                body.n = model.n;
-            }
-            if (model.stream_options) {
-                body.stream_options = model.stream_options;
-            }
-            if (model.response_format) {
-                body.response_format = model.response_format;
-            }
-            if (model.seed !== undefined && model.seed !== null) {
-                body.seed = model.seed;
-            }
-            if (model.logprobs !== undefined && model.logprobs !== null) {
-                body.logprobs = model.logprobs;
-            }
-            if (model.top_logprobs !== undefined && model.top_logprobs !== null) {
-                body.top_logprobs = model.top_logprobs;
-            }
-            if (model.user) {
-                body.user = model.user;
-            }
-            if (model.tools) {
-                body.tools = model.tools;
-            }
-            if (model.tool_choice) {
-                body.tool_choice = model.tool_choice;
-            }
-
-            // Add system prompt with identity
-            const systemPrompt = buildSystemPrompt(model);
-            if (systemPrompt) {
-                body.messages.unshift({ role: 'system', content: systemPrompt });
-            }
-
-            console.log('OpenAI request:', { endpoint: model.endpoint, body });
-
-            const apiKey = resolveApiKey(model);
-
-            // Build headers
-            const headers = {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            };
-
-            // Add custom headers
-            if (model.headers) {
-                Object.assign(headers, model.headers);
-            }
-
-            let response;
-            try {
-                response = await fetch(model.endpoint, {
-                    method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify(body)
-                });
-            } catch (e) {
-                console.error('Fetch error:', e);
-                throw new Error(`Network error: ${e.message}. Check your internet connection and API endpoint.`);
-            }
-
-            if (!response.ok) {
-                let errorText;
-                try {
-                    errorText = await response.text();
-                    console.error('API error response:', errorText);
-                } catch (e) {
-                    errorText = 'Could not read error response';
-                }
-                throw new Error(`API error ${response.status}: ${errorText}`);
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop();
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const data = line.slice(6);
-                        if (data === '[DONE]') continue;
-                        
-                        try {
-                            const parsed = JSON.parse(data);
-                            const delta = parsed.choices?.[0]?.delta?.content;
-                            if (delta) {
-                                assistantMessage.content += delta;
-                                renderConversation();
-                            }
-                        } catch (e) {
-                            console.error('Error parsing SSE:', e, 'Line:', line);
-                        }
-                    }
-                }
-            }
-        }
-
-        async function streamXAI(model, messages, assistantMessage) {
-            // xAI uses OpenAI-compatible API
-            const body = {
-                model: model.model_id,
-                messages: messages,
-                stream: true
-            };
-
-            // Add optional parameters if specified
-            if (model.max_tokens !== undefined && model.max_tokens !== null) {
-                body.max_tokens = model.max_tokens;
-            }
-            if (model.temperature !== undefined && model.temperature !== null) {
-                body.temperature = model.temperature;
-            }
-            if (model.top_p !== undefined && model.top_p !== null) {
-                body.top_p = model.top_p;
-            }
-            if (model.frequency_penalty !== undefined && model.frequency_penalty !== null) {
-                body.frequency_penalty = model.frequency_penalty;
-            }
-            if (model.presence_penalty !== undefined && model.presence_penalty !== null) {
-                body.presence_penalty = model.presence_penalty;
-            }
-            if (model.stop && model.stop.length > 0) {
-                body.stop = model.stop;
-            }
-            if (model.n !== undefined && model.n !== null) {
-                body.n = model.n;
-            }
-            if (model.stream_options) {
-                body.stream_options = model.stream_options;
-            }
-            if (model.response_format) {
-                body.response_format = model.response_format;
-            }
-            if (model.seed !== undefined && model.seed !== null) {
-                body.seed = model.seed;
-            }
-            if (model.logprobs !== undefined && model.logprobs !== null) {
-                body.logprobs = model.logprobs;
-            }
-            if (model.top_logprobs !== undefined && model.top_logprobs !== null) {
-                body.top_logprobs = model.top_logprobs;
-            }
-            if (model.user) {
-                body.user = model.user;
-            }
-            if (model.tools) {
-                body.tools = model.tools;
-            }
-            if (model.tool_choice) {
-                body.tool_choice = model.tool_choice;
-            }
-
-            // Add system prompt with identity
-            const systemPrompt = buildSystemPrompt(model);
-            if (systemPrompt) {
-                body.messages.unshift({ role: 'system', content: systemPrompt });
-            }
-
-            console.log('xAI request:', { endpoint: model.endpoint, body });
-
-            const apiKey = resolveApiKey(model);
-
-            // Build headers
-            const headers = {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            };
-
-            // Add custom headers
-            if (model.headers) {
-                Object.assign(headers, model.headers);
-            }
-
-            let response;
-            try {
-                response = await fetch(model.endpoint, {
-                    method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify(body)
-                });
-            } catch (e) {
-                console.error('Fetch error:', e);
-                throw new Error(`Network error: ${e.message}. Check your internet connection and API endpoint.`);
-            }
-
-            if (!response.ok) {
-                let errorText;
-                try {
-                    errorText = await response.text();
-                    console.error('API error response:', errorText);
-                } catch (e) {
-                    errorText = 'Could not read error response';
-                }
-                throw new Error(`API error ${response.status}: ${errorText}`);
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop();
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const data = line.slice(6);
-                        if (data === '[DONE]') continue;
-
-                        try {
-                            const parsed = JSON.parse(data);
-                            const delta = parsed.choices?.[0]?.delta?.content;
-                            if (delta) {
-                                assistantMessage.content += delta;
-                                renderConversation();
-                            }
-                        } catch (e) {
-                            console.error('Error parsing SSE:', e, 'Line:', line);
-                        }
-                    }
-                }
-            }
         }
 
         async function streamOpenRouter(model, messages, assistantMessage) {
@@ -2301,164 +1798,6 @@
                             const delta = parsed.choices?.[0]?.delta?.content;
                             if (delta) {
                                 assistantMessage.content += delta;
-                                renderConversation();
-                            }
-                        } catch (e) {
-                            console.error('Error parsing SSE:', e, 'Line:', line);
-                        }
-                    }
-                }
-            }
-        }
-
-        async function streamCustom(model, messages, assistantMessage) {
-            // For custom endpoints, try OpenAI format first
-            await streamOpenAI(model, messages, assistantMessage);
-        }
-
-        async function streamGoogle(model, messages, assistantMessage) {
-            // Convert messages to Google Gemini format
-            const contents = [];
-
-            for (const msg of messages) {
-                const parts = [];
-
-                if (typeof msg.content === 'string') {
-                    parts.push({ text: msg.content });
-                } else if (Array.isArray(msg.content)) {
-                    for (const item of msg.content) {
-                        if (item.type === 'text') {
-                            parts.push({ text: item.text });
-                        } else if (item.type === 'google_image') {
-                            parts.push({
-                                inlineData: {
-                                    mimeType: item.mime_type,
-                                    data: item.data
-                                }
-                            });
-                        }
-                    }
-                }
-
-                contents.push({
-                    role: msg.role === 'assistant' ? 'model' : 'user',
-                    parts: parts
-                });
-            }
-
-            const body = {
-                contents: contents
-            };
-
-            // Add generation config with optional parameters
-            const generationConfig = {};
-            if (model.temperature !== undefined && model.temperature !== null) {
-                generationConfig.temperature = model.temperature;
-            }
-            if (model.top_p !== undefined && model.top_p !== null) {
-                generationConfig.topP = model.top_p;
-            }
-            if (model.top_k !== undefined && model.top_k !== null) {
-                generationConfig.topK = model.top_k;
-            }
-            if (model.max_output_tokens !== undefined && model.max_output_tokens !== null) {
-                generationConfig.maxOutputTokens = model.max_output_tokens;
-            }
-            if (model.candidate_count !== undefined && model.candidate_count !== null) {
-                generationConfig.candidateCount = model.candidate_count;
-            }
-            if (model.stop_sequences && model.stop_sequences.length > 0) {
-                generationConfig.stopSequences = model.stop_sequences;
-            }
-
-            if (Object.keys(generationConfig).length > 0) {
-                body.generationConfig = generationConfig;
-            }
-
-            // Add safety settings
-            if (model.safety_settings) {
-                body.safetySettings = model.safety_settings;
-            }
-
-            // Add tools
-            if (model.tools) {
-                body.tools = model.tools;
-            }
-
-            // Add tool config
-            if (model.tool_config) {
-                body.toolConfig = model.tool_config;
-            }
-
-            // Add system instruction with identity
-            const systemPrompt = buildSystemPrompt(model);
-            if (systemPrompt) {
-                body.system_instruction = {
-                    parts: [{ text: systemPrompt }]
-                };
-            }
-
-            // Build endpoint with API key
-            const apiKey = resolveApiKey(model);
-            const endpoint = `${model.endpoint}?alt=sse&key=${apiKey}`;
-
-            console.log('Google request:', { endpoint, body });
-
-            // Build headers
-            const headers = {
-                'Content-Type': 'application/json'
-            };
-
-            // Add custom headers
-            if (model.headers) {
-                Object.assign(headers, model.headers);
-            }
-
-            let response;
-            try {
-                response = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: headers,
-                    body: JSON.stringify(body)
-                });
-            } catch (e) {
-                console.error('Fetch error:', e);
-                throw new Error(`Network error: ${e.message}. Check your internet connection and API endpoint.`);
-            }
-
-            if (!response.ok) {
-                let errorText;
-                try {
-                    errorText = await response.text();
-                    console.error('API error response:', errorText);
-                } catch (e) {
-                    errorText = 'Could not read error response';
-                }
-                throw new Error(`API error ${response.status}: ${errorText}`);
-            }
-
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let buffer = '';
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-                const lines = buffer.split('\n');
-                buffer = lines.pop();
-
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const data = line.slice(6);
-                        if (data === '[DONE]') continue;
-
-                        try {
-                            const parsed = JSON.parse(data);
-                            const text = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-                            if (text) {
-                                assistantMessage.content += text;
                                 renderConversation();
                             }
                         } catch (e) {
