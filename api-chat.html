@@ -538,6 +538,11 @@
                         <label><input type="radio" name="model-mode" value="rotating"> Rotating</label>
                         <label><input type="radio" name="model-mode" value="autonomous"> Autonomous</label>
                     </div>
+                    <div class="mode-selector" style="margin-top: 10px;">
+                        <label for="iteration-count">Iterations:</label>
+                        <input type="number" id="iteration-count" min="1" max="100" value="1" style="width: 80px; padding: 4px 8px; background: #2a2a2a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px;">
+                        <span style="font-size: 12px; color: #888; margin-left: 8px;">How many times models should reply</span>
+                    </div>
                     <button onclick="closeModelPicker()">Done</button>
                 </div>
             </div>
@@ -570,7 +575,7 @@
                     <li><strong>Browse Models:</strong> Go to Settings → Browse OpenRouter Models → Click "Load Models" to see all available models</li>
                     <li><strong>Add Models:</strong> Click any model from the browser to auto-populate the Add New Model form, or manually add model configuration</li>
                     <li><strong>Select Models:</strong> Click "Select Models" button, check the models you want to use</li>
-                    <li><strong>Choose Mode:</strong> In model picker, select Parallel/Serial/Rotating/Autonomous</li>
+                    <li><strong>Choose Mode & Iterations:</strong> In model picker, select Parallel/Serial/Rotating/Autonomous and set how many iterations (1-100)</li>
                     <li><strong>Chat:</strong> Type your message and click Send!</li>
                 </ol>
 
@@ -615,6 +620,14 @@
                     <li><strong>Serial:</strong> Models respond one after another. Each model sees all previous messages including other models' responses.</li>
                     <li><strong>Rotating:</strong> Like Serial, but the order rotates each turn (1,2,3 → 3,1,2 → 2,3,1 → repeat).</li>
                     <li><strong>Autonomous:</strong> Models converse with each other without human input. Click "Start Auto" to begin.</li>
+                </ul>
+                <h4>Iterations</h4>
+                <p>You can set the number of iterations (1-100) to control how many times models reply:</p>
+                <ul>
+                    <li><strong>Parallel:</strong> All models respond N times in parallel (e.g., 2 iterations = 2 rounds of all models responding simultaneously)</li>
+                    <li><strong>Serial:</strong> The complete sequence of models responds N times (e.g., 3 iterations with 2 models = model1, model2, model1, model2, model1, model2)</li>
+                    <li><strong>Rotating:</strong> The rotated sequence repeats N times with order continuing to rotate each iteration</li>
+                    <li><strong>Autonomous:</strong> Models converse for exactly N rounds before stopping automatically</li>
                 </ul>
 
                 <h3>Model Identity System</h3>
@@ -787,6 +800,7 @@
         let rotationIndex = 0;
         let isAutonomousRunning = false;
         let autonomousRounds = 0;
+        let iterationCount = 1;
         let availableModels = [];
         let filteredModels = [];
         let currentAbortControllers = [];
@@ -853,6 +867,7 @@
 
             multiModelMode = localStorage.getItem('multiModelMode') || 'parallel';
             rotationIndex = parseInt(localStorage.getItem('rotationIndex') || '0');
+            iterationCount = parseInt(localStorage.getItem('iterationCount') || '1');
         }
 
         function saveToStorage() {
@@ -864,6 +879,7 @@
             localStorage.setItem('selectedModelIndices', JSON.stringify(selectedModelIndices));
             localStorage.setItem('multiModelMode', multiModelMode);
             localStorage.setItem('rotationIndex', rotationIndex.toString());
+            localStorage.setItem('iterationCount', iterationCount.toString());
         }
 
         function setupEventListeners() {
@@ -903,6 +919,20 @@
                     saveToStorage();
                 });
             });
+
+            // Iteration count input
+            const iterationInput = document.getElementById('iteration-count');
+            if (iterationInput) {
+                iterationInput.addEventListener('change', (e) => {
+                    const value = parseInt(e.target.value);
+                    if (value >= 1 && value <= 100) {
+                        iterationCount = value;
+                        saveToStorage();
+                    } else {
+                        e.target.value = iterationCount;
+                    }
+                });
+            }
 
             // Autonomous button
             document.getElementById('auto-btn').addEventListener('click', toggleAutonomous);
@@ -1065,6 +1095,12 @@
                 radio.checked = (radio.value === multiModelMode);
             });
 
+            // Set the iteration count
+            const iterationInput = document.getElementById('iteration-count');
+            if (iterationInput) {
+                iterationInput.value = iterationCount;
+            }
+
             popup.style.display = 'flex';
         }
 
@@ -1112,7 +1148,8 @@
             autoBtn.textContent = 'Stop Auto';
             autoBtn.style.background = '#ff4a4a';
 
-            while (isAutonomousRunning) {
+            // Run for iterationCount rounds (or until stopped manually)
+            while (isAutonomousRunning && autonomousRounds < iterationCount) {
                 try {
                     await handleAutonomousRound();
                     autonomousRounds++;
@@ -1127,6 +1164,11 @@
                     alert('Error in autonomous mode: ' + error.message);
                 }
             }
+
+            // Reset button when done (either completed iterations or stopped manually)
+            isAutonomousRunning = false;
+            autoBtn.textContent = 'Start Auto';
+            autoBtn.style.background = '#4a9eff';
         }
 
         function updatePromptsList() {
@@ -1650,81 +1692,91 @@
         }
 
         async function handleParallelMode() {
-            // All models answer independently in parallel
-            const promises = selectedModelIndices.map(async (modelIndex) => {
-                const model = models[modelIndex];
-                const assistantMessage = {
-                    role: 'assistant',
-                    content: '',
-                    thinking: '',
-                    images: [],
-                    modelName: model.name,
-                    timestamp: Date.now()
-                };
-                currentConversation.push(assistantMessage);
-                renderConversation();
-                await streamResponse(model, assistantMessage);
-            });
+            // All models answer independently in parallel, repeated for iterationCount times
+            for (let iteration = 0; iteration < iterationCount; iteration++) {
+                const promises = selectedModelIndices.map(async (modelIndex) => {
+                    const model = models[modelIndex];
+                    const assistantMessage = {
+                        role: 'assistant',
+                        content: '',
+                        thinking: '',
+                        images: [],
+                        modelName: model.name,
+                        timestamp: Date.now()
+                    };
+                    currentConversation.push(assistantMessage);
+                    renderConversation();
+                    await streamResponse(model, assistantMessage);
+                });
 
-            await Promise.all(promises);
+                await Promise.all(promises);
+
+                // Save after each iteration completes
+                saveToStorage();
+                renderConversation();
+            }
         }
 
         async function handleSerialMode() {
-            // Models answer sequentially, each seeing previous responses
-            for (let i = 0; i < selectedModelIndices.length; i++) {
-                const modelIndex = selectedModelIndices[i];
-                const model = models[modelIndex];
-                const assistantMessage = {
-                    role: 'assistant',
-                    content: '',
-                    thinking: '',
-                    images: [],
-                    modelName: model.name,
-                    timestamp: Date.now()
-                };
-                currentConversation.push(assistantMessage);
-                renderConversation();
-                await streamResponse(model, assistantMessage);
+            // Models answer sequentially, each seeing previous responses, repeated for iterationCount times
+            for (let iteration = 0; iteration < iterationCount; iteration++) {
+                for (let i = 0; i < selectedModelIndices.length; i++) {
+                    const modelIndex = selectedModelIndices[i];
+                    const model = models[modelIndex];
+                    const assistantMessage = {
+                        role: 'assistant',
+                        content: '',
+                        thinking: '',
+                        images: [],
+                        modelName: model.name,
+                        timestamp: Date.now()
+                    };
+                    currentConversation.push(assistantMessage);
+                    renderConversation();
+                    await streamResponse(model, assistantMessage);
 
-                // Save and render after each model completes so next model sees the response
-                saveToStorage();
-                renderConversation();
+                    // Save and render after each model completes so next model sees the response
+                    saveToStorage();
+                    renderConversation();
+                }
             }
         }
 
         async function handleRotatingMode() {
-            // Serial mode with rotating order
-            const orderedIndices = [...selectedModelIndices];
+            // Serial mode with rotating order, repeated for iterationCount times
+            for (let iteration = 0; iteration < iterationCount; iteration++) {
+                const orderedIndices = [...selectedModelIndices];
 
-            // Rotate based on rotationIndex
-            for (let i = 0; i < rotationIndex % orderedIndices.length; i++) {
-                orderedIndices.push(orderedIndices.shift());
-            }
+                // Rotate based on rotationIndex
+                for (let i = 0; i < rotationIndex % orderedIndices.length; i++) {
+                    orderedIndices.push(orderedIndices.shift());
+                }
 
-            // Process in rotated order
-            for (let i = 0; i < orderedIndices.length; i++) {
-                const modelIndex = orderedIndices[i];
-                const model = models[modelIndex];
-                const assistantMessage = {
-                    role: 'assistant',
-                    content: '',
-                    thinking: '',
-                    images: [],
-                    modelName: model.name,
-                    timestamp: Date.now()
-                };
-                currentConversation.push(assistantMessage);
-                renderConversation();
-                await streamResponse(model, assistantMessage);
+                // Process in rotated order
+                for (let i = 0; i < orderedIndices.length; i++) {
+                    const modelIndex = orderedIndices[i];
+                    const model = models[modelIndex];
+                    const assistantMessage = {
+                        role: 'assistant',
+                        content: '',
+                        thinking: '',
+                        images: [],
+                        modelName: model.name,
+                        timestamp: Date.now()
+                    };
+                    currentConversation.push(assistantMessage);
+                    renderConversation();
+                    await streamResponse(model, assistantMessage);
 
-                // Save and render after each model completes so next model sees the response
+                    // Save and render after each model completes so next model sees the response
+                    saveToStorage();
+                    renderConversation();
+                }
+
+                // Increment rotation for next iteration
+                rotationIndex++;
                 saveToStorage();
-                renderConversation();
             }
-
-            // Increment rotation for next time
-            rotationIndex++;
-            saveToStorage();
         }
 
         async function handleAutonomousRound() {
