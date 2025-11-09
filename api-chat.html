@@ -1373,78 +1373,102 @@
                 return;
             }
 
-            const userMessage = {
-                role: 'user',
-                content: messageText,
-                files: attachedFiles.length > 0 ? [...attachedFiles] : null,
-                timestamp: Date.now()
-            };
-
-            if (editingMessageIndex !== null) {
-                // Replace message and truncate conversation
-                currentConversation = currentConversation.slice(0, editingMessageIndex);
-                currentConversation.push(userMessage);
-                editingMessageIndex = null;
-            } else {
-                currentConversation.push(userMessage);
-            }
-
-            input.value = '';
-            attachedFiles = [];
-            renderAttachedFiles();
-            renderConversation();
-            saveToStorage();
-
-            // Start streaming response
-            isStreaming = true;
-            document.getElementById('send-btn').disabled = true;
-            renderConversation(); // Show typing indicator
-
-            // Add debug status message
-            const statusMessage = {
-                role: 'assistant',
-                content: `🔄 Starting response... (Mode: ${multiModelMode}, Models: ${selectedModelIndices.length})`,
-                timestamp: Date.now(),
-                isStatus: true
-            };
-            currentConversation.push(statusMessage);
-            renderConversation();
-
             try {
-                if (multiModelMode === 'parallel') {
-                    await handleParallelMode();
-                } else if (multiModelMode === 'serial') {
-                    await handleSerialMode();
-                } else if (multiModelMode === 'rotating') {
-                    await handleRotatingMode();
-                }
-                // Remove status message on success
-                const statusIndex = currentConversation.findIndex(m => m.isStatus);
-                if (statusIndex !== -1) {
-                    currentConversation.splice(statusIndex, 1);
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                // Remove status message
-                const statusIndex = currentConversation.findIndex(m => m.isStatus);
-                if (statusIndex !== -1) {
-                    currentConversation.splice(statusIndex, 1);
-                }
+                alert(`DEBUG 1: Starting send. Mode=${multiModelMode}, Models=${selectedModelIndices.length}`);
 
-                // Add detailed error message
-                const errorMessage = {
-                    role: 'assistant',
-                    content: `❌ ERROR: ${error.message}\n\nDetails:\n- Check your API key in Settings\n- Verify model is configured correctly\n- Make sure you have internet connection\n\nFull error: ${error.stack || error.toString()}`,
+                const userMessage = {
+                    role: 'user',
+                    content: messageText,
+                    files: attachedFiles.length > 0 ? [...attachedFiles] : null,
                     timestamp: Date.now()
                 };
-                currentConversation.push(errorMessage);
-                renderConversation();
-            }
 
-            isStreaming = false;
-            document.getElementById('send-btn').disabled = false;
-            renderConversation(); // Hide typing indicator
-            saveToStorage();
+                if (editingMessageIndex !== null) {
+                    currentConversation = currentConversation.slice(0, editingMessageIndex);
+                    currentConversation.push(userMessage);
+                    editingMessageIndex = null;
+                } else {
+                    currentConversation.push(userMessage);
+                }
+
+                input.value = '';
+                attachedFiles = [];
+                renderAttachedFiles();
+                renderConversation();
+                saveToStorage();
+
+                alert('DEBUG 2: User message added');
+
+                // Start streaming response
+                isStreaming = true;
+                document.getElementById('send-btn').disabled = true;
+                renderConversation();
+
+                alert('DEBUG 3: About to add status message');
+
+                // Add debug status message
+                const statusMessage = {
+                    role: 'assistant',
+                    content: `🔄 Starting response... (Mode: ${multiModelMode}, Models: ${selectedModelIndices.length})`,
+                    timestamp: Date.now(),
+                    isStatus: true
+                };
+                currentConversation.push(statusMessage);
+                renderConversation();
+
+                alert('DEBUG 4: Status message added, entering mode handler');
+
+                try {
+                    if (multiModelMode === 'parallel') {
+                        alert('DEBUG 5: Calling handleParallelMode');
+                        await handleParallelMode();
+                    } else if (multiModelMode === 'serial') {
+                        alert('DEBUG 5: Calling handleSerialMode');
+                        await handleSerialMode();
+                    } else if (multiModelMode === 'rotating') {
+                        alert('DEBUG 5: Calling handleRotatingMode');
+                        await handleRotatingMode();
+                    }
+                    alert('DEBUG 6: Mode handler completed successfully');
+
+                    // Remove status message on success
+                    const statusIndex = currentConversation.findIndex(m => m.isStatus);
+                    if (statusIndex !== -1) {
+                        currentConversation.splice(statusIndex, 1);
+                    }
+                } catch (error) {
+                    alert(`DEBUG ERROR: ${error.message}`);
+                    console.error('Error:', error);
+
+                    // Remove status message
+                    const statusIndex = currentConversation.findIndex(m => m.isStatus);
+                    if (statusIndex !== -1) {
+                        currentConversation.splice(statusIndex, 1);
+                    }
+
+                    // Add detailed error message
+                    const errorMessage = {
+                        role: 'assistant',
+                        content: `❌ ERROR: ${error.message}\n\nDetails:\n- Check your API key in Settings\n- Verify model is configured correctly\n- Make sure you have internet connection\n\nFull error: ${error.stack || error.toString()}`,
+                        timestamp: Date.now()
+                    };
+                    currentConversation.push(errorMessage);
+                    renderConversation();
+                }
+
+                alert('DEBUG 7: Cleaning up');
+                isStreaming = false;
+                document.getElementById('send-btn').disabled = false;
+                renderConversation();
+                saveToStorage();
+                alert('DEBUG 8: Send completed');
+
+            } catch (outerError) {
+                alert(`FATAL ERROR in sendMessage: ${outerError.message}`);
+                console.error('Fatal error:', outerError);
+                isStreaming = false;
+                document.getElementById('send-btn').disabled = false;
+            }
         }
 
         async function handleParallelMode() {
