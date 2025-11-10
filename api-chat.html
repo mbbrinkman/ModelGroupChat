@@ -95,6 +95,78 @@
             font-style: italic;
         }
 
+        .thinking-toggle {
+            background: #3a2a1a;
+            border: 1px solid #4a4a4a;
+            color: #ff8c42;
+            padding: 6px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            margin: 8px 0;
+            display: inline-block;
+            user-select: none;
+        }
+
+        .thinking-toggle:hover {
+            background: #4a3a2a;
+        }
+
+        .thinking-content {
+            background: #3a2a1a;
+            padding: 10px;
+            border-radius: 6px;
+            border-left: 3px solid #ff8c42;
+            margin: 8px 0;
+            font-style: italic;
+            font-size: 13px;
+            color: #d0d0d0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .thinking-content.collapsed {
+            display: none;
+        }
+
+        .inline-thinking-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 8px;
+            background: #3a2a1a;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #ff8c42;
+            font-style: italic;
+            margin: 4px 0;
+        }
+
+        .inline-thinking-indicator .dot {
+            width: 4px;
+            height: 4px;
+            background: #ff8c42;
+            border-radius: 50%;
+            animation: thinking-pulse 1.4s infinite;
+        }
+
+        .inline-thinking-indicator .dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .inline-thinking-indicator .dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes thinking-pulse {
+            0%, 60%, 100% {
+                opacity: 0.3;
+            }
+            30% {
+                opacity: 1;
+            }
+        }
+
         .typing-indicator {
             background: #2a2a2a;
             padding: 12px 16px;
@@ -543,6 +615,21 @@
                         <input type="number" id="iteration-count" min="1" max="100" value="1" style="width: 80px; padding: 4px 8px; background: #2a2a2a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px;">
                         <span style="font-size: 12px; color: #888; margin-left: 8px;">How many times models should reply</span>
                     </div>
+                    <div class="mode-selector" style="margin-top: 10px;">
+                        <label for="history-limit">Message History Limit:</label>
+                        <input type="number" id="history-limit" min="0" max="1000" value="0" style="width: 80px; padding: 4px 8px; background: #2a2a2a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px;">
+                        <span style="font-size: 12px; color: #888; margin-left: 8px;">0 = all messages</span>
+                    </div>
+                    <div class="mode-selector" style="margin-top: 10px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="include-files-checkbox" style="width: auto;">
+                            <span>Include files in message history</span>
+                        </label>
+                        <div style="font-size: 11px; color: #666; margin-top: 4px; margin-left: 24px;">
+                            Parallel mode: Sends last N messages per model separately<br>
+                            Other modes: Sends last N messages (model-agnostic)
+                        </div>
+                    </div>
                     <button onclick="closeModelPicker()">Done</button>
                 </div>
             </div>
@@ -801,9 +888,12 @@
         let isAutonomousRunning = false;
         let autonomousRounds = 0;
         let iterationCount = 1;
+        let messageHistoryLimit = 0; // 0 means all messages
+        let includeFilesInHistory = false;
         let availableModels = [];
         let filteredModels = [];
         let currentAbortControllers = [];
+        let conversationHistory = []; // Array to store saved conversations
 
         // Initialize
         function init() {
@@ -868,6 +958,17 @@
             multiModelMode = localStorage.getItem('multiModelMode') || 'parallel';
             rotationIndex = parseInt(localStorage.getItem('rotationIndex') || '0');
             iterationCount = parseInt(localStorage.getItem('iterationCount') || '1');
+            messageHistoryLimit = parseInt(localStorage.getItem('messageHistoryLimit') || '0');
+            includeFilesInHistory = localStorage.getItem('includeFilesInHistory') === 'true';
+
+            const storedHistory = localStorage.getItem('conversationHistory');
+            if (storedHistory) {
+                try {
+                    conversationHistory = JSON.parse(storedHistory);
+                } catch (e) {
+                    console.error('Error loading conversation history:', e);
+                }
+            }
         }
 
         function saveToStorage() {
@@ -880,6 +981,9 @@
             localStorage.setItem('multiModelMode', multiModelMode);
             localStorage.setItem('rotationIndex', rotationIndex.toString());
             localStorage.setItem('iterationCount', iterationCount.toString());
+            localStorage.setItem('messageHistoryLimit', messageHistoryLimit.toString());
+            localStorage.setItem('includeFilesInHistory', includeFilesInHistory.toString());
+            localStorage.setItem('conversationHistory', JSON.stringify(conversationHistory));
         }
 
         function setupEventListeners() {
@@ -931,6 +1035,29 @@
                     } else {
                         e.target.value = iterationCount;
                     }
+                });
+            }
+
+            // Message history limit input
+            const historyLimitInput = document.getElementById('history-limit');
+            if (historyLimitInput) {
+                historyLimitInput.addEventListener('change', (e) => {
+                    const value = parseInt(e.target.value);
+                    if (value >= 0 && value <= 1000) {
+                        messageHistoryLimit = value;
+                        saveToStorage();
+                    } else {
+                        e.target.value = messageHistoryLimit;
+                    }
+                });
+            }
+
+            // Include files checkbox
+            const includeFilesCheckbox = document.getElementById('include-files-checkbox');
+            if (includeFilesCheckbox) {
+                includeFilesCheckbox.addEventListener('change', (e) => {
+                    includeFilesInHistory = e.target.checked;
+                    saveToStorage();
                 });
             }
 
@@ -1099,6 +1226,18 @@
             const iterationInput = document.getElementById('iteration-count');
             if (iterationInput) {
                 iterationInput.value = iterationCount;
+            }
+
+            // Set the history limit
+            const historyLimitInput = document.getElementById('history-limit');
+            if (historyLimitInput) {
+                historyLimitInput.value = messageHistoryLimit;
+            }
+
+            // Set the include files checkbox
+            const includeFilesCheckbox = document.getElementById('include-files-checkbox');
+            if (includeFilesCheckbox) {
+                includeFilesCheckbox.checked = includeFilesInHistory;
             }
 
             popup.style.display = 'flex';
@@ -1880,15 +2019,31 @@
             const messages = [];
             let lastRole = null;
 
-            for (const msg of currentConversation) {
+            // Filter messages based on mode
+            let conversationToUse = [...currentConversation];
+
+            // In parallel mode, only include messages from this specific model and user messages
+            if (multiModelMode === 'parallel') {
+                conversationToUse = conversationToUse.filter(msg =>
+                    msg.role === 'user' ||
+                    (msg.role === 'assistant' && msg.modelName === model.name)
+                );
+            }
+
+            // Apply message history limit (0 = all messages)
+            if (messageHistoryLimit > 0 && conversationToUse.length > messageHistoryLimit) {
+                conversationToUse = conversationToUse.slice(-messageHistoryLimit);
+            }
+
+            for (const msg of conversationToUse) {
                 if (msg === excludeMessage) continue; // Skip the message we're currently generating
 
                 if (msg.role === 'user') {
                     let content;
 
-                    // Build content based on whether we have files
-                    if (msg.files && msg.files.length > 0) {
-                        // Has files - use array format (OpenAI-compatible)
+                    // Build content based on whether we have files and includeFilesInHistory setting
+                    if (includeFilesInHistory && msg.files && msg.files.length > 0) {
+                        // Has files and should include them - use array format (OpenAI-compatible)
                         content = [];
 
                         if (msg.content) {
@@ -1913,7 +2068,7 @@
                             }
                         }
                     } else {
-                        // No files - use simple string format
+                        // No files or should not include files - use simple string format
                         content = msg.content || '';
                     }
 
@@ -2189,13 +2344,6 @@
                     div.innerHTML = contentHtml;
                     container.appendChild(div);
                 } else if (msg.role === 'assistant') {
-                    if (msg.thinking && msg.hasThinking) {
-                        const thinkingDiv = document.createElement('div');
-                        thinkingDiv.className = 'message thinking';
-                        thinkingDiv.innerHTML = `<div class="message-content">${escapeHtml(msg.thinking)}</div>`;
-                        container.appendChild(thinkingDiv);
-                    }
-
                     const div = document.createElement('div');
                     div.className = 'message assistant';
                     const rendered = renderMarkdownWithLatex(msg.content);
@@ -2204,6 +2352,32 @@
                     // Show model name if multiple models are selected
                     if (msg.modelName && selectedModelIndices.length > 1) {
                         contentHtml += `<div style="font-size: 12px; color: #888; margin-bottom: 8px; font-weight: 600;">${escapeHtml(msg.modelName)}</div>`;
+                    }
+
+                    // Show inline thinking indicator if currently streaming thinking
+                    const isStreamingThisMessage = isStreaming && currentConversation[currentConversation.length - 1] === msg;
+                    if (isStreamingThisMessage && msg.thinking && !msg.content) {
+                        contentHtml += `
+                            <div class="inline-thinking-indicator">
+                                <span>Thinking...</span>
+                                <div class="dot"></div>
+                                <div class="dot"></div>
+                                <div class="dot"></div>
+                            </div>
+                        `;
+                    }
+
+                    // Show thinking content if it exists (collapsible)
+                    if (msg.thinking) {
+                        const thinkingId = `thinking-${index}`;
+                        contentHtml += `
+                            <div class="thinking-toggle" onclick="toggleThinking('${thinkingId}')">
+                                🧠 Chain of Thought (click to ${msg.thinkingCollapsed !== false ? 'expand' : 'collapse'})
+                            </div>
+                            <div id="${thinkingId}" class="thinking-content${msg.thinkingCollapsed !== false ? ' collapsed' : ''}">
+                                ${escapeHtml(msg.thinking)}
+                            </div>
+                        `;
                     }
 
                     contentHtml += `<div class="message-content">${rendered}</div>`;
@@ -2228,20 +2402,21 @@
                 }
             });
 
-            // Add typing indicator at the end if streaming
-            if (isStreaming) {
-                const typingDiv = document.createElement('div');
-                typingDiv.className = 'typing-indicator active';
-                typingDiv.innerHTML = `
-                    <span style="margin-right: 8px;">AI is thinking</span>
-                    <div class="dot"></div>
-                    <div class="dot"></div>
-                    <div class="dot"></div>
-                `;
-                container.appendChild(typingDiv);
-            }
-
             container.scrollTop = container.scrollHeight;
+        }
+
+        function toggleThinking(thinkingId) {
+            const element = document.getElementById(thinkingId);
+            if (element) {
+                element.classList.toggle('collapsed');
+
+                // Update the message's collapsed state
+                const index = parseInt(thinkingId.split('-')[1]);
+                if (currentConversation[index]) {
+                    currentConversation[index].thinkingCollapsed = element.classList.contains('collapsed');
+                    saveToStorage();
+                }
+            }
         }
 
         function editMessage(index) {
@@ -2370,34 +2545,111 @@
 
         function renderHistory() {
             const list = document.getElementById('history-list');
-            
-            if (currentConversation.length === 0) {
-                list.innerHTML = '<p style="color: #888;">No conversation history yet.</p>';
-                return;
+            let html = '';
+
+            // Show current conversation
+            if (currentConversation.length > 0) {
+                const summary = currentConversation.slice(0, 2).map(msg => {
+                    if (msg.role === 'user') return 'User: ' + msg.content.substring(0, 50);
+                    return 'Assistant: ' + msg.content.substring(0, 50);
+                }).join('\n');
+
+                html += `
+                    <div class="history-item">
+                        <h4>Current Conversation</h4>
+                        <div style="white-space: pre-wrap; font-size: 13px; color: #aaa;">${escapeHtml(summary)}...</div>
+                        <div style="color: #666; font-size: 12px; margin-top: 8px;">${currentConversation.length} messages</div>
+                        <div class="history-actions">
+                            <button onclick="exportConversation()">Export</button>
+                            <button onclick="clearConversation()">Clear</button>
+                        </div>
+                    </div>
+                `;
             }
 
-            const summary = currentConversation.slice(0, 2).map(msg => {
-                if (msg.role === 'user') return 'User: ' + msg.content.substring(0, 50);
-                return 'Assistant: ' + msg.content.substring(0, 50);
-            }).join('\n');
+            // Show saved conversation history
+            if (conversationHistory.length > 0) {
+                html += '<h3 style="margin-top: 20px; margin-bottom: 12px; color: #4a9eff;">Saved Conversations</h3>';
 
-            list.innerHTML = `
-                <div class="history-item">
-                    <h4>Current Conversation</h4>
-                    <div style="white-space: pre-wrap; font-size: 13px; color: #aaa;">${escapeHtml(summary)}...</div>
-                    <div style="color: #666; font-size: 12px; margin-top: 8px;">${currentConversation.length} messages</div>
-                    <div class="history-actions">
-                        <button onclick="exportConversation()">Export</button>
-                        <button onclick="clearConversation()">Clear</button>
-                    </div>
-                </div>
-            `;
+                conversationHistory.forEach((entry, index) => {
+                    const date = new Date(entry.timestamp);
+                    const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                    const summary = entry.conversation.slice(0, 2).map(msg => {
+                        if (msg.role === 'user') return 'User: ' + (msg.content || '').substring(0, 50);
+                        return 'Assistant: ' + (msg.content || '').substring(0, 50);
+                    }).join('\n');
+
+                    html += `
+                        <div class="history-item">
+                            <h4>${escapeHtml(dateStr)}</h4>
+                            <div style="white-space: pre-wrap; font-size: 13px; color: #aaa;">${escapeHtml(summary)}...</div>
+                            <div style="color: #666; font-size: 12px; margin-top: 8px;">${entry.messageCount} messages</div>
+                            <div class="history-actions">
+                                <button onclick="loadConversation(${index})">Load</button>
+                                <button onclick="exportHistoryItem(${index})">Export</button>
+                                <button onclick="deleteHistoryItem(${index})">Delete</button>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+
+            if (!html) {
+                html = '<p style="color: #888;">No conversation history yet. Start a chat and click "New Chat" to save it.</p>';
+            }
+
+            list.innerHTML = html;
+        }
+
+        function loadConversation(index) {
+            if (!confirm('Load this conversation? Current conversation will be replaced.')) return;
+
+            const entry = conversationHistory[index];
+            if (entry) {
+                currentConversation = [...entry.conversation];
+                saveToStorage();
+                renderConversation();
+                renderHistory();
+                switchTab('chat');
+            }
+        }
+
+        function exportHistoryItem(index) {
+            const entry = conversationHistory[index];
+            if (entry) {
+                const data = {
+                    conversation: entry.conversation,
+                    timestamp: entry.timestamp
+                };
+                downloadJSON(data, `conversation-${entry.id}.json`);
+            }
+        }
+
+        function deleteHistoryItem(index) {
+            if (!confirm('Delete this conversation from history?')) return;
+
+            conversationHistory.splice(index, 1);
+            saveToStorage();
+            renderHistory();
         }
 
         function newChat() {
             if (currentConversation.length > 0) {
-                if (!confirm('Start a new chat? Current conversation will be cleared.')) return;
+                // Automatically save current conversation to history
+                const historyEntry = {
+                    id: Date.now().toString(),
+                    timestamp: new Date().toISOString(),
+                    conversation: [...currentConversation],
+                    messageCount: currentConversation.length
+                };
+                conversationHistory.unshift(historyEntry); // Add to beginning of array
+
+                // Keep only last 50 conversations to avoid excessive storage
+                if (conversationHistory.length > 50) {
+                    conversationHistory = conversationHistory.slice(0, 50);
+                }
             }
+
             currentConversation = [];
             attachedFiles = [];
             editingMessageIndex = null;
