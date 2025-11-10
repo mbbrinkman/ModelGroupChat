@@ -2493,7 +2493,8 @@
 
             // Regenerate the response
             isStreaming = true;
-            document.getElementById('send-btn').disabled = true;
+            currentAbortControllers = [];
+            showStopButton();
 
             try {
                 await streamResponse(model, assistantMessage);
@@ -2504,8 +2505,10 @@
             }
 
             isStreaming = false;
-            document.getElementById('send-btn').disabled = false;
+            currentAbortControllers = [];
+            hideStopButton();
             saveToStorage();
+            renderConversation();
         }
 
         function renderMarkdownWithLatex(text) {
