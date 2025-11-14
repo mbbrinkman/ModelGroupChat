@@ -2637,13 +2637,19 @@
                 }
             }
 
-            // Validate that we received content
-            if (!hasReceivedContent && !assistantMessage.content && !assistantMessage.thinking) {
-                // Log diagnostic information
+            // Validate that we received content (text, thinking, or images)
+            if (!hasReceivedContent && !assistantMessage.content && !assistantMessage.thinking && !assistantMessage.images?.length) {
+                // Log detailed diagnostic information
                 console.warn('Model completed streaming with no content', {
                     model: model.name,
+                    model_id: model.model_id,
                     finishReason: finishReason,
-                    hasImages: assistantMessage.images?.length > 0
+                    hasReceivedContent: hasReceivedContent,
+                    contentLength: assistantMessage.content?.length || 0,
+                    thinkingLength: assistantMessage.thinking?.length || 0,
+                    imageCount: assistantMessage.images?.length || 0,
+                    messageCount: messages.length,
+                    timestamp: new Date().toISOString()
                 });
 
                 // Throw error with helpful message based on finish reason
@@ -2651,6 +2657,9 @@
                     throw new Error(`${model.name} declined to respond due to content filter. Try rephrasing your message.`);
                 } else if (finishReason === 'length') {
                     throw new Error(`${model.name} hit token limit before responding. Try reducing message history or increasing max_tokens.`);
+                } else if (finishReason === 'stop') {
+                    // More specific error for 'stop' reason with no content
+                    throw new Error(`${model.name} stopped immediately without generating content. This may indicate:\n• Content filtering or safety refusal\n• Prompt formatting issues\n• Model configuration problems (check max_tokens, temperature)\n• API or model instability\n\nTry:\n• Rephrasing your message\n• Clearing conversation history\n• Using a different model`);
                 } else if (finishReason) {
                     throw new Error(`${model.name} stopped with reason: ${finishReason} (no content generated)`);
                 } else {
