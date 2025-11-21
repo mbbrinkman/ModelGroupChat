@@ -739,10 +739,11 @@
                 <h3>Model Identity System</h3>
                 <p>When multiple models are selected, each model automatically receives identity information:</p>
                 <ul>
-                    <li><strong>Parallel:</strong> "You are [Model Name]. You are conversing with: Human."</li>
-                    <li><strong>Serial/Rotating:</strong> "You are [Model Name]. You are conversing with: Human, [Other Models]."</li>
-                    <li><strong>Autonomous:</strong> "You are [Model Name]. You are conversing with: [Other Models]." (no Human)</li>
+                    <li><strong>Parallel:</strong> "You are [Model Name]. You are conversing with: [Your Identifier]."</li>
+                    <li><strong>Serial/Rotating:</strong> "You are [Model Name]. You are conversing with: [Your Identifier], [Other Models]."</li>
+                    <li><strong>Autonomous:</strong> "You are [Model Name]. You are conversing with: [Other Models]." (no user)</li>
                 </ul>
+                <p><strong>User Identifier:</strong> You can customize how you're identified in conversations by going to Settings → User Identifier. The default is "Human", but you can change it to any name you prefer (e.g., "User", "Moderator", "Observer", etc.). This allows you to reduce perceived hierarchy in multi-model conversations.</p>
                 <p><strong>Multiple Instances:</strong> You can select multiple instances of the same model by using the number input next to each model in the picker. The model name is simply a chat identifier to distinguish between different instances - multiple instances of the same underlying model can participate with different names (e.g., "GPT-4 Debater 1" and "GPT-4 Debater 2").</p>
 
                 <h3>About OpenRouter</h3>
@@ -851,6 +852,12 @@
     <div id="settings-tab" class="tab-content">
         <div class="settings-container">
             <div class="settings-section">
+                <h3>User Identifier</h3>
+                <p style="font-size: 13px; color: #888; margin-bottom: 12px;">Customize how you're identified in multi-model conversations (default: "Human")</p>
+                <input type="text" id="user-identifier-input" placeholder="Enter your identifier (e.g., User, Moderator, etc.)" style="margin-bottom: 8px;">
+                <button class="primary" onclick="saveUserIdentifier()">Save Identifier</button>
+            </div>
+            <div class="settings-section">
                 <h3>Add New Prompt</h3>
                 <input type="text" id="new-prompt-name" placeholder="Prompt name" style="margin-bottom: 8px;">
                 <textarea id="new-prompt-content" placeholder="System prompt content..."></textarea>
@@ -929,6 +936,7 @@
         let responseDelay = 1000; // Delay in ms between responses in serial/rotating/autonomous modes
         let enableModelIdentity = true; // Whether to inject model identity into system prompts
         let enableBackgroundAudio = false; // Whether to play silent audio to keep app alive on iOS
+        let userIdentifier = 'Human'; // Customizable identifier for the user in multi-model conversations
         let availableModels = [];
         let filteredModels = [];
         let currentAbortControllers = [];
@@ -946,6 +954,7 @@
             updateModelsList();
             updateApiKeysList();
             updatePromptsList();
+            updateUserIdentifierInput();
             renderConversation();
             renderHistory();
         }
@@ -1014,6 +1023,7 @@
                 responseDelay = await loadData('responseDelay', 1000);
                 enableModelIdentity = await loadData('enableModelIdentity', true);
                 enableBackgroundAudio = await loadData('enableBackgroundAudio', false);
+                userIdentifier = await loadData('userIdentifier', 'Human');
                 conversationHistory = await loadData('conversationHistory', []);
             } catch (e) {
                 console.error('Error loading from IndexedDB:', e);
@@ -1037,6 +1047,7 @@
                     saveData('responseDelay', responseDelay),
                     saveData('enableModelIdentity', enableModelIdentity),
                     saveData('enableBackgroundAudio', enableBackgroundAudio),
+                    saveData('userIdentifier', userIdentifier),
                     saveData('conversationHistory', conversationHistory)
                 ]);
             } catch (e) {
@@ -1684,6 +1695,27 @@
             }
             saveToStorage();
             updatePromptsList();
+        }
+
+        function saveUserIdentifier() {
+            const input = document.getElementById('user-identifier-input');
+            const value = input.value.trim();
+
+            if (!value) {
+                alert('Please enter an identifier');
+                return;
+            }
+
+            userIdentifier = value;
+            saveToStorage();
+            alert(`User identifier updated to: ${value}`);
+        }
+
+        function updateUserIdentifierInput() {
+            const input = document.getElementById('user-identifier-input');
+            if (input) {
+                input.value = userIdentifier;
+            }
         }
 
         function addApiKey() {
@@ -2372,7 +2404,7 @@
 
                 if (multiModelMode === 'parallel') {
                     // In parallel mode, each model only responds to human independently
-                    conversants.push('Human');
+                    conversants.push(userIdentifier);
                 } else if (multiModelMode === 'autonomous') {
                     // In autonomous mode, models only converse with each other (no human)
                     const otherModels = selectedModelIndices
@@ -2382,7 +2414,7 @@
                     conversants.push(...otherModels);
                 } else {
                     // In serial/rotating modes, models see human AND other models
-                    conversants.push('Human');
+                    conversants.push(userIdentifier);
                     const otherModels = selectedModelIndices
                         .map(idx => models[idx])
                         .filter(m => m.name !== model.name)
@@ -2393,7 +2425,7 @@
                 if (conversants.length > 0) {
                     systemPrompt += `You are conversing with: ${conversants.join(', ')}.
 
-IMPORTANT: In this multi-participant conversation, user messages may come from other AI models, not just from Human. When you see a message that starts with "X said: ...", that message is FROM X - it's their actual message content, not the human quoting them. You should treat "Model A said: hello" the same as if Model A directly sent you "hello". This is a real conversation between multiple participants (${conversants.join(', ')}), and you should engage naturally.
+IMPORTANT: In this multi-participant conversation, user messages may come from other AI models, not just from ${userIdentifier}. When you see a message that starts with "X said: ...", that message is FROM X - it's their actual message content, not the human quoting them. You should treat "Model A said: hello" the same as if Model A directly sent you "hello". This is a real conversation between multiple participants (${conversants.join(', ')}), and you should engage naturally.
 
 You should respond directly with your message content - do NOT add extra formatting, labels, prefixes, or leading newlines before your response. Simply start your response immediately with your first word. You should respond as ${sanitizedName}, not as any other participant. Note that some chat participants may be different instances of the same underlying model as you, distinguished only by their chat identifier.\n\n`;
                 }
@@ -3515,6 +3547,7 @@ You should respond directly with your message content - do NOT add extra formatt
                 systemPrompts,
                 activePromptId,
                 currentConversation,
+                userIdentifier,
                 exportDate: new Date().toISOString()
             };
             downloadJSON(data, `api-chat-backup-${Date.now()}.json`);
@@ -3534,6 +3567,7 @@ You should respond directly with your message content - do NOT add extra formatt
                     if (data.systemPrompts) systemPrompts = data.systemPrompts;
                     if (data.activePromptId) activePromptId = data.activePromptId;
                     if (data.currentConversation) currentConversation = data.currentConversation;
+                    if (data.userIdentifier) userIdentifier = data.userIdentifier;
 
                     await saveToStorage();
                     await init();
