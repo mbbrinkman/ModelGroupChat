@@ -7,6 +7,12 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <!-- PDF.js for PDF text extraction -->
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+    <script>
+        // Configure PDF.js worker
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+    </script>
     <style>
         * {
             box-sizing: border-box;
@@ -773,7 +779,14 @@
                 <p>Click "Edit" button on your own messages to revise and branch the conversation from that point.</p>
 
                 <h4>File Attachments</h4>
-                <p>Click the "Attach" button to attach images. Support varies by model - most vision-capable models on OpenRouter support image attachments.</p>
+                <p>Click the "Attach" button to attach files. Supported file types:</p>
+                <ul style="margin-left: 20px; margin-top: 8px;">
+                    <li><strong>Images:</strong> Sent as visual data to vision-capable models</li>
+                    <li><strong>PDFs:</strong> Text content is automatically extracted and sent to the model</li>
+                    <li><strong>Text files:</strong> Content is read and sent to the model (.txt, .md, .json, .csv, .xml, code files, etc.)</li>
+                    <li><strong>Other files:</strong> File name is mentioned (content extraction not supported)</li>
+                </ul>
+                <p style="margin-top: 8px;">Files are kept in context and will be included when you "Edit & Resend" messages.</p>
 
                 <h4>Image Generation</h4>
                 <p>The application supports receiving images from image generation models:</p>
@@ -2026,15 +2039,23 @@
 
         async function handleFileUpload(e) {
             const files = Array.from(e.target.files);
-            
+
             for (const file of files) {
                 const base64 = await fileToBase64(file);
-                attachedFiles.push({
+                const fileObj = {
                     name: file.name,
                     type: file.type,
                     size: file.size,
                     base64: base64.split(',')[1] // Remove data URL prefix
-                });
+                };
+
+                // Extract text content from PDFs and text files
+                const extractedContent = await extractFileContent(file);
+                if (extractedContent !== null) {
+                    fileObj.extractedText = extractedContent;
+                }
+
+                attachedFiles.push(fileObj);
             }
 
             renderAttachedFiles();
@@ -2050,6 +2071,77 @@
             });
         }
 
+        // Extract text content from a PDF file
+        async function extractTextFromPDF(file) {
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                let fullText = '';
+
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join(' ');
+                    fullText += `\n--- Page ${i} ---\n${pageText}\n`;
+                }
+
+                return fullText.trim();
+            } catch (error) {
+                console.error('Error extracting PDF text:', error);
+                return `[Error extracting text from PDF: ${error.message}]`;
+            }
+        }
+
+        // Read text content from a text file
+        async function readTextFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsText(file);
+            });
+        }
+
+        // Extract content from a file based on its type
+        async function extractFileContent(file) {
+            const type = file.type.toLowerCase();
+            const name = file.name.toLowerCase();
+
+            // PDFs
+            if (type === 'application/pdf' || name.endsWith('.pdf')) {
+                return await extractTextFromPDF(file);
+            }
+
+            // Text files
+            if (type.startsWith('text/') ||
+                name.endsWith('.txt') ||
+                name.endsWith('.md') ||
+                name.endsWith('.json') ||
+                name.endsWith('.csv') ||
+                name.endsWith('.xml') ||
+                name.endsWith('.html') ||
+                name.endsWith('.css') ||
+                name.endsWith('.js') ||
+                name.endsWith('.py') ||
+                name.endsWith('.java') ||
+                name.endsWith('.c') ||
+                name.endsWith('.cpp') ||
+                name.endsWith('.h') ||
+                name.endsWith('.sh') ||
+                name.endsWith('.yaml') ||
+                name.endsWith('.yml')) {
+                try {
+                    return await readTextFile(file);
+                } catch (error) {
+                    console.error('Error reading text file:', error);
+                    return `[Error reading text file: ${error.message}]`;
+                }
+            }
+
+            // For unsupported types, return null (will be handled differently)
+            return null;
+        }
+
         function renderAttachedFiles() {
             const container = document.getElementById('attached-files');
             container.innerHTML = '';
@@ -2057,8 +2149,23 @@
             attachedFiles.forEach((file, index) => {
                 const div = document.createElement('div');
                 div.className = 'attached-file';
+
+                // Determine file type indicator
+                let typeIndicator = '';
+                if (file.type.startsWith('image/')) {
+                    typeIndicator = '🖼️ ';
+                } else if (file.extractedText) {
+                    if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+                        typeIndicator = '📄 ';
+                    } else {
+                        typeIndicator = '📝 ';
+                    }
+                } else {
+                    typeIndicator = '📎 ';
+                }
+
                 div.innerHTML = `
-                    <span>${escapeHtml(file.name)} (${formatFileSize(file.size)})</span>
+                    <span>${typeIndicator}${escapeHtml(file.name)} (${formatFileSize(file.size)})</span>
                     <button onclick="removeAttachedFile(${index})">✕</button>
                 `;
                 container.appendChild(div);
@@ -2521,11 +2628,17 @@ You should respond directly with your message content - do NOT add extra formatt
                                         url: `data:${file.type};base64,${file.base64}`
                                     }
                                 });
-                            } else {
-                                // For other file types, just mention it
+                            } else if (file.extractedText) {
+                                // For files with extracted text content (PDFs, text files, etc.)
                                 content.push({
                                     type: 'text',
-                                    text: `[Attached file: ${file.name}]`
+                                    text: `[File: ${file.name}]\n\n${file.extractedText}`
+                                });
+                            } else {
+                                // For unsupported file types, just mention it
+                                content.push({
+                                    type: 'text',
+                                    text: `[Attached file: ${file.name} - content extraction not supported for this file type]`
                                 });
                             }
                         }
@@ -2978,8 +3091,18 @@ You should respond directly with your message content - do NOT add extra formatt
                                 contentHtml += `<div class="file-preview"><img src="data:${file.type};base64,${file.base64}" alt="${escapeHtml(file.name)}"></div>`;
                             } else if (file.type.startsWith('video/')) {
                                 contentHtml += `<div class="file-preview"><video controls src="data:${file.type};base64,${file.base64}"></video></div>`;
+                            } else if (file.extractedText) {
+                                // Show file info with indicator that text was extracted
+                                const previewLength = 150;
+                                const preview = file.extractedText.substring(0, previewLength);
+                                const hasMore = file.extractedText.length > previewLength;
+                                const fileIcon = (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) ? '📄' : '📝';
+                                contentHtml += `<div class="file-info" style="background: #2a2a2a; padding: 8px; border-radius: 4px; margin-top: 8px;">
+                                    <div style="font-weight: bold; margin-bottom: 4px;">${fileIcon} ${escapeHtml(file.name)} (${formatFileSize(file.size)}) - Text extracted</div>
+                                    <div style="font-size: 12px; color: #888; font-style: italic;">${escapeHtml(preview)}${hasMore ? '...' : ''}</div>
+                                </div>`;
                             } else {
-                                contentHtml += `<div class="file-info">${escapeHtml(file.name)} (${formatFileSize(file.size)})</div>`;
+                                contentHtml += `<div class="file-info">📎 ${escapeHtml(file.name)} (${formatFileSize(file.size)})</div>`;
                             }
                         }
                     }
