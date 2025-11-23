@@ -24,8 +24,7 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #1a1a1a;
             color: #e0e0e0;
-            height: 100vh;
-            height: 100dvh; /* Use dynamic viewport height for mobile (falls back to 100vh) */
+            height: 100dvh; /* Use dynamic viewport height for mobile */
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -1291,6 +1290,18 @@
             // Autonomous button
             document.getElementById('auto-btn').addEventListener('click', toggleAutonomous);
 
+            // Resume audio context when returning to the tab/app (iOS resurrection)
+            document.addEventListener('visibilitychange', async () => {
+                if (!document.hidden && enableBackgroundAudio && audioContext && audioContext.state === 'interrupted') {
+                    console.log('Resuming interrupted audio context...');
+                    try {
+                        await audioContext.resume();
+                    } catch (e) {
+                        console.error('Error resuming audio context:', e);
+                    }
+                }
+            });
+
             // Handle mobile keyboard show/hide to fix viewport issues
             // When keyboard closes, scroll chat to bottom and fix layout
             let lastHeight = window.innerHeight;
@@ -1311,7 +1322,7 @@
                     // Force layout recalculation
                     document.body.style.height = currentHeight + 'px';
                     setTimeout(() => {
-                        document.body.style.height = '100vh';
+                        document.body.style.height = '100dvh';
                     }, 200);
                 }
 
@@ -2789,8 +2800,12 @@ You should respond directly with your message content - do NOT add extra formatt
                     // Build content string from all available content sources
                     let content = '';
 
-                    // Include thinking if it exists
-                    if (msg.thinking && msg.thinking.trim()) {
+                    // Check if content acts as a duplicate of thinking (prevents double-sending)
+                    const isDuplicate = msg.content && msg.thinking &&
+                                       msg.content.trim() === msg.thinking.trim();
+
+                    // Only add thinking if it's NOT a duplicate of the main content
+                    if (msg.thinking && msg.thinking.trim() && !isDuplicate) {
                         content += `[Thinking: ${msg.thinking.trim()}]\n\n`;
                     }
 
