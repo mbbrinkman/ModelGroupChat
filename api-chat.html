@@ -3661,17 +3661,17 @@ You should respond directly with your message content - do NOT add extra formatt
             let processed = escapeHtml(text);
 
             // Mask code blocks AND inline code before LaTeX processing
-            // Use %%%% delimiters to avoid conflicts with markdown processing
+            // Use @@ delimiters and no underscores/asterisks to avoid markdown conflicts
             const masks = [];
             processed = processed.replace(/```[\s\S]+?```/g, m => {
                 const id = masks.length;
                 masks.push(m);
-                return `%%%%CODE_MASK_${id}%%%%`;
+                return `@@XCODEX${id}@@`;
             });
             processed = processed.replace(/`[^`\n]+`/g, m => {
                 const id = masks.length;
                 masks.push(m);
-                return `%%%%CODE_MASK_${id}%%%%`;
+                return `@@XCODEX${id}@@`;
             });
 
             // Now run LaTeX replacements on processed (no code in here)
@@ -3800,7 +3800,7 @@ You should respond directly with your message content - do NOT add extra formatt
             processed = result.join('\n');
 
             // Restore masked code (converts to proper HTML)
-            processed = processed.replace(/%%%%CODE_MASK_(\d+)%%%%/g, (_, i) => {
+            processed = processed.replace(/@@XCODEX(\d+)@@/g, (_, i) => {
                 const masked = masks[+i];
                 // Process code blocks
                 if (masked.startsWith('```')) {
