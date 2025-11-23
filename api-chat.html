@@ -651,7 +651,7 @@
                     <div class="mode-selector" style="margin-top: 10px;">
                         <label style="display: flex; align-items: center; gap: 8px;">
                             <input type="checkbox" id="background-audio-checkbox" style="width: auto;">
-                            <span>Keep generating in background (iOS - prevents pause when screen off)</span>
+                            <span>Keep generating in background (iOS – best effort only; may still pause when screen locks)</span>
                         </label>
                     </div>
                     <button onclick="closeModelPicker()">Done</button>
@@ -960,6 +960,7 @@
         let filteredModels = [];
         let currentAbortControllers = [];
         let conversationHistory = []; // Array to store saved conversations
+        let renderTimer = null; // Timer for debouncing render calls during streaming
 
         // Background audio to prevent iOS from pausing when screen is off
         let audioContext = null;
@@ -1034,6 +1035,11 @@
                 activePromptId = await loadData('activePromptId', null);
                 currentConversation = await loadData('currentConversation', []);
                 selectedModelIndices = await loadData('selectedModelIndices', []);
+
+                // Sanitize selectedModelIndices to prevent stale indices
+                selectedModelIndices = selectedModelIndices
+                    .filter(idx => Number.isInteger(idx) && idx >= 0 && idx < models.length);
+
                 multiModelMode = await loadData('multiModelMode', 'parallel');
                 rotationIndex = await loadData('rotationIndex', 0);
                 iterationCount = await loadData('iterationCount', 1);
@@ -1158,7 +1164,14 @@
             // Model mode radio buttons
             document.querySelectorAll('input[name="model-mode"]').forEach(radio => {
                 radio.addEventListener('change', (e) => {
-                    multiModelMode = e.target.value;
+                    const newMode = e.target.value;
+                    multiModelMode = newMode;
+
+                    // Reset rotation index when leaving rotating mode
+                    if (newMode !== 'rotating') {
+                        rotationIndex = 0;
+                    }
+
                     updateUIForMode();
                     updateModelPickerButton();
                     saveToStorage();
@@ -1331,9 +1344,7 @@
   "stop": null,
   "tools": null,
   "tool_choice": null,
-  "reasoning": {
-    "effort": "medium"
-  },
+  "reasoning": null,
   "provider": null,
   "models": null,
   "route": null,
@@ -1586,7 +1597,7 @@
                 const starterMessage = {
                     role: 'user',
                     content: 'Begin your conversation.',
-                    timestamp: Date.now()
+                    timestamp: new Date().toISOString()
                 };
                 currentConversation.push(starterMessage);
                 saveToStorage();
@@ -2082,8 +2093,36 @@
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
-                    const pageText = textContent.items.map(item => item.str).join(' ');
-                    fullText += `\n--- Page ${i} ---\n${pageText}\n`;
+
+                    // Preserve layout using Y-coordinates
+                    let lastY = null;
+                    let pageLines = [];
+                    let currentLine = [];
+
+                    for (const item of textContent.items) {
+                        const text = item.str;
+                        const y = item.transform[5];
+
+                        if (lastY === null) {
+                            lastY = y;
+                        }
+
+                        // New "line" when Y changes significantly
+                        if (Math.abs(y - lastY) > 5) {
+                            if (currentLine.length) {
+                                pageLines.push(currentLine.join(' '));
+                                currentLine = [];
+                            }
+                            lastY = y;
+                        }
+
+                        currentLine.push(text);
+                    }
+                    if (currentLine.length) {
+                        pageLines.push(currentLine.join(' '));
+                    }
+
+                    fullText += `\n--- Page ${i} ---\n${pageLines.join('\n')}\n`;
                 }
 
                 return fullText.trim();
@@ -2244,7 +2283,7 @@
                 role: 'user',
                 content: messageText,
                 files: attachedFiles.length > 0 ? [...attachedFiles] : null,
-                timestamp: Date.now()
+                timestamp: new Date().toISOString()
             };
 
             if (editingMessageIndex !== null) {
@@ -2293,7 +2332,7 @@
                 const errorMessage = {
                     role: 'assistant',
                     content: `Error: ${error.message}\n\nTroubleshooting:\n• Check your API key in Settings\n• Verify your model configuration\n• Ensure you have internet connection`,
-                    timestamp: Date.now()
+                    timestamp: new Date().toISOString()
                 };
                 currentConversation.push(errorMessage);
                 renderConversation();
@@ -2326,7 +2365,7 @@
                         thinking: '',
                         images: [],
                         modelName: model.name,
-                        timestamp: Date.now()
+                        timestamp: new Date().toISOString()
                     };
                     currentConversation.push(assistantMessage);
                     renderConversation();
@@ -2367,7 +2406,7 @@
                         thinking: '',
                         images: [],
                         modelName: model.name,
-                        timestamp: Date.now()
+                        timestamp: new Date().toISOString()
                     };
                     currentConversation.push(assistantMessage);
                     renderConversation();
@@ -2419,7 +2458,7 @@
                         thinking: '',
                         images: [],
                         modelName: model.name,
-                        timestamp: Date.now()
+                        timestamp: new Date().toISOString()
                     };
                     currentConversation.push(assistantMessage);
                     renderConversation();
@@ -2474,7 +2513,7 @@
                 thinking: '',
                 images: [],
                 modelName: model.name,
-                timestamp: Date.now()
+                timestamp: new Date().toISOString()
             };
 
             currentConversation.push(assistantMessage);
@@ -2610,17 +2649,22 @@ You should respond directly with your message content - do NOT add extra formatt
                 );
             }
 
-            // Apply message history limit (0 = all messages)
-            if (messageHistoryLimit > 0 && conversationToUse.length > messageHistoryLimit) {
-                conversationToUse = conversationToUse.slice(-messageHistoryLimit);
-            }
-
-            // Find the most recent user message (to always include its files)
+            // Find the most recent user message BEFORE applying history limit (to always include its files)
             let mostRecentUserMsg = null;
             for (let i = conversationToUse.length - 1; i >= 0; i--) {
                 if (conversationToUse[i].role === 'user' && conversationToUse[i] !== excludeMessage) {
                     mostRecentUserMsg = conversationToUse[i];
                     break;
+                }
+            }
+
+            // Apply message history limit (0 = all messages)
+            if (messageHistoryLimit > 0 && conversationToUse.length > messageHistoryLimit) {
+                conversationToUse = conversationToUse.slice(-messageHistoryLimit);
+
+                // If mostRecentUserMsg was cut off, ensure it's included
+                if (mostRecentUserMsg && !conversationToUse.includes(mostRecentUserMsg)) {
+                    conversationToUse.unshift(mostRecentUserMsg);
                 }
             }
 
@@ -2661,15 +2705,17 @@ You should respond directly with your message content - do NOT add extra formatt
                                 });
                             } else if (file.extractedText) {
                                 // For files with extracted text content (PDFs, text files, etc.)
+                                const safeName = sanitizeFileName(file.name);
                                 content.push({
                                     type: 'text',
-                                    text: `[File: ${file.name}]\n\n${file.extractedText}`
+                                    text: `[File: ${safeName}]\n\n${file.extractedText}`
                                 });
                             } else {
                                 // For unsupported file types, just mention it
+                                const safeName = sanitizeFileName(file.name);
                                 content.push({
                                     type: 'text',
-                                    text: `[Attached file: ${file.name} - content extraction not supported for this file type]`
+                                    text: `[Attached file: ${safeName} - content extraction not supported for this file type]`
                                 });
                             }
                         }
@@ -2972,7 +3018,7 @@ You should respond directly with your message content - do NOT add extra formatt
                                         hasReceivedContent = true;
                                     }
                                 }
-                                renderConversation();
+                                scheduleRender();
                             }
 
                             // Handle content (can be string or array of content blocks)
@@ -2999,7 +3045,7 @@ You should respond directly with your message content - do NOT add extra formatt
                                             }
                                         }
                                     }
-                                    renderConversation();
+                                    scheduleRender();
                                 } else if (typeof delta.content === 'string') {
                                     // String content (most common case)
                                     // Trim leading whitespace from first content chunk only
@@ -3007,7 +3053,7 @@ You should respond directly with your message content - do NOT add extra formatt
                                     assistantMessage.content += contentToAdd;
                                     hasReceivedContent = true;
                                     isFirstContentChunk = false;
-                                    renderConversation();
+                                    scheduleRender();
                                 }
                             }
 
@@ -3023,7 +3069,7 @@ You should respond directly with your message content - do NOT add extra formatt
                                 assistantMessage.thinking += thinkingToAdd;
                                 hasReceivedContent = true;
                                 isFirstThinkingChunk = false;
-                                renderConversation();
+                                scheduleRender();
                             }
 
                             // Check for images in the response (for non-streaming or final chunk)
@@ -3041,7 +3087,7 @@ You should respond directly with your message content - do NOT add extra formatt
                                         hasReceivedContent = true;
                                     }
                                 }
-                                renderConversation();
+                                scheduleRender();
                             }
 
                             // Also check for content array in message (non-streaming response)
@@ -3065,13 +3111,23 @@ You should respond directly with your message content - do NOT add extra formatt
                                         }
                                     }
                                 }
-                                renderConversation();
+                                scheduleRender();
                             }
                         } catch (e) {
                             console.error('Error parsing SSE:', e, 'Line:', line);
                         }
                     }
                 }
+            }
+
+            // Promote thinking to content when content is empty
+            const hasContentText = assistantMessage.content && assistantMessage.content.trim().length > 0;
+            const hasThinkingText = assistantMessage.thinking && assistantMessage.thinking.trim().length > 0;
+
+            if (!hasContentText && hasThinkingText) {
+                // Promote thinking to visible content
+                assistantMessage.content = assistantMessage.thinking;
+                // Keep thinking for the collapsible section
             }
 
             // Validate that we received content (text, thinking, or images)
@@ -3103,6 +3159,14 @@ You should respond directly with your message content - do NOT add extra formatt
                     throw new Error(`${model.name} completed streaming but provided no response. This may be a model issue or API error.`);
                 }
             }
+        }
+
+        function scheduleRender() {
+            if (renderTimer) return;
+            renderTimer = requestAnimationFrame(() => {
+                renderTimer = null;
+                renderConversation();
+            });
         }
 
         function renderConversation() {
@@ -3172,15 +3236,35 @@ You should respond directly with your message content - do NOT add extra formatt
 
                     // Show thinking content if it exists (collapsible)
                     if (msg.thinking) {
+                        const hasContent = msg.content && msg.content.trim().length > 0;
+                        const hasThinking = msg.thinking && msg.thinking.trim().length > 0;
+
+                        // If user has explicitly toggled, respect that.
+                        // Otherwise, auto-expand when there is no content but there is thinking.
+                        const shouldAutoExpand = !hasContent && hasThinking;
+                        const isCollapsed =
+                            msg.thinkingCollapsed !== undefined
+                                ? msg.thinkingCollapsed
+                                : !shouldAutoExpand;
+
                         const thinkingId = `thinking-${index}`;
                         contentHtml += `
                             <div class="thinking-toggle" onclick="toggleThinking('${thinkingId}')">
-                                Chain of Thought (click to ${msg.thinkingCollapsed !== false ? 'expand' : 'collapse'})
+                                Chain of Thought (click to ${isCollapsed ? 'expand' : 'collapse'})
                             </div>
-                            <div id="${thinkingId}" class="thinking-content${msg.thinkingCollapsed !== false ? ' collapsed' : ''}">
+                            <div id="${thinkingId}" class="thinking-content${isCollapsed ? ' collapsed' : ''}">
                                 ${escapeHtml(msg.thinking)}
                             </div>
                         `;
+
+                        // Add hint when thinking is the only channel
+                        if (!hasContent && hasThinking) {
+                            contentHtml += `
+                                <div style="font-size: 12px; color: #ff8c42; font-style: italic; margin-top: 4px;">
+                                    (Response is in the Chain of Thought section above)
+                                </div>
+                            `;
+                        }
                     }
 
                     contentHtml += `<div class="message-content">${rendered}</div>`;
@@ -3206,6 +3290,13 @@ You should respond directly with your message content - do NOT add extra formatt
             });
 
             container.scrollTop = container.scrollHeight;
+
+            // Fix scroll jitter by re-scrolling when images load
+            container.querySelectorAll('img').forEach(img => {
+                img.addEventListener('load', () => {
+                    container.scrollTop = container.scrollHeight;
+                }, { once: true });
+            });
         }
 
         function toggleThinking(thinkingId) {
@@ -3272,7 +3363,7 @@ You should respond directly with your message content - do NOT add extra formatt
             const cancelBtn = document.createElement('button');
             cancelBtn.textContent = 'Cancel';
             cancelBtn.style.cssText = 'padding: 6px 12px; background: #4a4a4a; border: none; color: #e0e0e0; border-radius: 4px; cursor: pointer;';
-            cancelBtn.onclick = () => renderConversation();
+            cancelBtn.onclick = cancelEditInline;
 
             buttonContainer.appendChild(saveBtn);
             buttonContainer.appendChild(cancelBtn);
@@ -3293,7 +3384,13 @@ You should respond directly with your message content - do NOT add extra formatt
 
             // Create textarea for editing
             const textarea = document.createElement('textarea');
-            textarea.value = msg.content;
+
+            // Fall back to thinking when content is empty
+            let initialValue = msg.content || '';
+            if (!initialValue && msg.thinking) {
+                initialValue = msg.thinking;
+            }
+            textarea.value = initialValue;
             textarea.style.cssText = `
                 width: 100%;
                 min-height: 100px;
@@ -3322,7 +3419,7 @@ You should respond directly with your message content - do NOT add extra formatt
             const cancelBtn = document.createElement('button');
             cancelBtn.textContent = 'Cancel';
             cancelBtn.style.cssText = 'padding: 6px 12px; background: #4a4a4a; border: none; color: #e0e0e0; border-radius: 4px; cursor: pointer;';
-            cancelBtn.onclick = () => renderConversation();
+            cancelBtn.onclick = cancelEditInline;
 
             buttonContainer.appendChild(saveBtn);
             buttonContainer.appendChild(cancelBtn);
@@ -3347,6 +3444,13 @@ You should respond directly with your message content - do NOT add extra formatt
             }
 
             saveToStorage();
+            renderConversation();
+        }
+
+        function cancelEditInline() {
+            editingMessageIndex = null;
+            attachedFiles = [];
+            renderAttachedFiles();
             renderConversation();
         }
 
@@ -3394,7 +3498,7 @@ You should respond directly with your message content - do NOT add extra formatt
                 const errorMessage = {
                     role: 'assistant',
                     content: `Error: ${error.message}`,
-                    timestamp: Date.now()
+                    timestamp: new Date().toISOString()
                 };
                 currentConversation.push(errorMessage);
                 renderConversation();
@@ -3452,7 +3556,7 @@ You should respond directly with your message content - do NOT add extra formatt
                 content: '',
                 thinking: '',
                 modelName: model.name,
-                timestamp: Date.now()
+                timestamp: new Date().toISOString()
             };
 
             currentConversation.push(assistantMessage);
@@ -3486,11 +3590,25 @@ You should respond directly with your message content - do NOT add extra formatt
             if (!text) return '';
 
             // Escape HTML first
-            let escaped = escapeHtml(text);
+            let processed = escapeHtml(text);
 
+            // Mask code blocks AND inline code before LaTeX processing
+            const masks = [];
+            processed = processed.replace(/```[\s\S]+?```/g, m => {
+                const id = masks.length;
+                masks.push(m);
+                return `__CODE_MASK_${id}__`;
+            });
+            processed = processed.replace(/`[^`\n]+`/g, m => {
+                const id = masks.length;
+                masks.push(m);
+                return `__CODE_MASK_${id}__`;
+            });
+
+            // Now run LaTeX replacements on processed (no code in here)
             // Render block LaTeX first - process all block formats before inline
             // Format: \[ ... \] (standard LaTeX display math)
-            escaped = escaped.replace(/\\\[([\s\S]+?)\\\]/g, (match, latex) => {
+            processed = processed.replace(/\\\[([\s\S]+?)\\\]/g, (match, latex) => {
                 try {
                     return katex.renderToString(latex.trim(), { throwOnError: false, displayMode: true });
                 } catch (e) {
@@ -3499,7 +3617,7 @@ You should respond directly with your message content - do NOT add extra formatt
             });
 
             // Format: $$ ... $$ (alternative display math)
-            escaped = escaped.replace(/\$\$([\s\S]+?)\$\$/g, (match, latex) => {
+            processed = processed.replace(/\$\$([\s\S]+?)\$\$/g, (match, latex) => {
                 try {
                     return katex.renderToString(latex.trim(), { throwOnError: false, displayMode: true });
                 } catch (e) {
@@ -3509,7 +3627,7 @@ You should respond directly with your message content - do NOT add extra formatt
 
             // Render inline LaTeX - process all inline formats
             // Format: \( ... \) (standard LaTeX inline math)
-            escaped = escaped.replace(/\\\(([\s\S]+?)\\\)/g, (match, latex) => {
+            processed = processed.replace(/\\\(([\s\S]+?)\\\)/g, (match, latex) => {
                 try {
                     return katex.renderToString(latex.trim(), { throwOnError: false, displayMode: false });
                 } catch (e) {
@@ -3518,7 +3636,7 @@ You should respond directly with your message content - do NOT add extra formatt
             });
 
             // Format: $ ... $ (alternative inline math)
-            escaped = escaped.replace(/\$([^\$\n]+)\$/g, (match, latex) => {
+            processed = processed.replace(/\$([^\$\n]+)\$/g, (match, latex) => {
                 try {
                     return katex.renderToString(latex, { throwOnError: false, displayMode: false });
                 } catch (e) {
@@ -3526,16 +3644,28 @@ You should respond directly with your message content - do NOT add extra formatt
                 }
             });
 
-            // Code blocks - must come before inline code
-            escaped = escaped.replace(/```([\s\S]+?)```/g, '<pre style="background: #2a2a2a; padding: 12px; border-radius: 6px; overflow-x: auto; margin: 8px 0;">$1</pre>');
-
-            // Simple markdown: **bold**, *italic*, `code`
+            // Simple markdown: **bold**, *italic*
             // Use [\s\S] to match across newlines
-            escaped = escaped.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
-            escaped = escaped.replace(/\*([\s\S]+?)\*/g, '<em>$1</em>');
-            escaped = escaped.replace(/`([^`\n]+)`/g, '<code style="background: #3a3a3a; padding: 2px 6px; border-radius: 3px;">$1</code>');
+            processed = processed.replace(/\*\*([\s\S]+?)\*\*/g, '<strong>$1</strong>');
+            processed = processed.replace(/\*([\s\S]+?)\*/g, '<em>$1</em>');
 
-            return escaped;
+            // Restore masked code (converts to proper HTML)
+            processed = processed.replace(/__CODE_MASK_(\d+)__/g, (_, i) => {
+                const masked = masks[+i];
+                // Process code blocks
+                if (masked.startsWith('```')) {
+                    const content = masked.slice(3, -3);
+                    return '<pre style="background: #2a2a2a; padding: 12px; border-radius: 6px; overflow-x: auto; margin: 8px 0;">' + content + '</pre>';
+                }
+                // Process inline code
+                else if (masked.startsWith('`')) {
+                    const content = masked.slice(1, -1);
+                    return '<code style="background: #3a3a3a; padding: 2px 6px; border-radius: 3px;">' + content + '</code>';
+                }
+                return masked;
+            });
+
+            return processed;
         }
 
         function renderHistory() {
@@ -3767,6 +3897,13 @@ You should respond directly with your message content - do NOT add extra formatt
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        function sanitizeFileName(name) {
+            if (!name || typeof name !== 'string') return 'unnamed-file';
+            let sanitized = name.replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim();
+            if (sanitized.length > 100) sanitized = sanitized.slice(0, 100) + '...';
+            return sanitized || 'unnamed-file';
         }
 
         // Initialize on load
