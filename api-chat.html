@@ -222,6 +222,27 @@
             line-height: 1.5;
         }
 
+        /* List styling - override pre-wrap to fix spacing */
+        .message-content ol,
+        .message-content ul {
+            white-space: normal;
+            margin: 8px 0;
+            padding-left: 24px;
+        }
+
+        .message-content ol {
+            list-style-type: decimal;
+        }
+
+        .message-content ul {
+            list-style-type: disc;
+        }
+
+        .message-content li {
+            white-space: pre-wrap;
+            margin: 4px 0;
+        }
+
         .message-actions {
             margin-top: 8px;
             display: flex;
@@ -3759,7 +3780,7 @@ You should respond directly with your message content - do NOT add extra formatt
                             result.push('</ol>');
                             inOrderedList = false;
                         }
-                        result.push('<ul style="margin: 8px 0; padding-left: 20px;">');
+                        result.push('<ul>');
                         inUnorderedList = true;
                     }
                     result.push(`<li>${unorderedMatch[2]}</li>`);
@@ -3774,7 +3795,7 @@ You should respond directly with your message content - do NOT add extra formatt
                             result.push('</ul>');
                             inUnorderedList = false;
                         }
-                        result.push('<ol style="margin: 8px 0; padding-left: 20px;">');
+                        result.push('<ol>');
                         inOrderedList = true;
                     }
                     result.push(`<li>${orderedMatch[1]}</li>`);
@@ -3817,8 +3838,8 @@ You should respond directly with your message content - do NOT add extra formatt
 
             // Clean up excessive newlines around block elements
             // Remove newlines before/after block elements to prevent double spacing
-            processed = processed.replace(/\n+(<\/?(h[1-6]|ul|ol|blockquote|hr|pre)[^>]*>)/g, '$1');
-            processed = processed.replace(/(<\/?(h[1-6]|ul|ol|blockquote|hr|pre)[^>]*>)\n+/g, '$1');
+            processed = processed.replace(/\n+(<\/?(h[1-6]|ul|ol|li|blockquote|hr|pre)[^>]*>)/g, '$1');
+            processed = processed.replace(/(<\/?(h[1-6]|ul|ol|li|blockquote|hr|pre)[^>]*>)\n+/g, '$1');
 
             // Convert double+ newlines to newline + <br> for paragraph spacing
             // (single newlines are already rendered by white-space: pre-wrap)
