@@ -240,6 +240,15 @@
             margin: 4px 0;
         }
 
+        .message-content a {
+            color: #4a9eff;
+            text-decoration: none;
+        }
+
+        .message-content a:hover {
+            text-decoration: underline;
+        }
+
         .message-actions {
             margin-top: 8px;
             display: flex;
@@ -3351,7 +3360,11 @@ You should respond directly with your message content - do NOT add extra formatt
                 } else if (msg.role === 'assistant') {
                     const div = document.createElement('div');
                     div.className = 'message assistant';
-                    const rendered = renderMarkdownWithLatex(msg.content);
+
+                    // Check if content is just promoted thinking (duplicate)
+                    const isPromotedThinking = msg.content && msg.thinking &&
+                                               msg.content.trim() === msg.thinking.trim();
+                    const rendered = isPromotedThinking ? '' : renderMarkdownWithLatex(msg.content);
                     let contentHtml = '';
 
                     // Show model name if multiple models are selected
@@ -3374,12 +3387,13 @@ You should respond directly with your message content - do NOT add extra formatt
 
                     // Show thinking content if it exists (collapsible)
                     if (msg.thinking) {
-                        const hasContent = msg.content && msg.content.trim().length > 0;
                         const hasThinking = msg.thinking && msg.thinking.trim().length > 0;
+                        // Content is "real" only if it exists and isn't just promoted thinking
+                        const hasRealContent = msg.content && msg.content.trim().length > 0 && !isPromotedThinking;
 
                         // If user has explicitly toggled, respect that.
-                        // Otherwise, auto-expand when there is no content but there is thinking.
-                        const shouldAutoExpand = !hasContent && hasThinking;
+                        // Otherwise, auto-expand when there is no real content but there is thinking.
+                        const shouldAutoExpand = !hasRealContent && hasThinking;
                         const isCollapsed =
                             msg.thinkingCollapsed !== undefined
                                 ? msg.thinkingCollapsed
@@ -3396,7 +3410,7 @@ You should respond directly with your message content - do NOT add extra formatt
                         `;
 
                         // Add hint when thinking is the only channel
-                        if (!hasContent && hasThinking) {
+                        if (!hasRealContent && hasThinking) {
                             contentHtml += `
                                 <div style="font-size: 12px; color: #ff8c42; font-style: italic; margin-top: 4px;">
                                     (Response is in the Chain of Thought section above)
