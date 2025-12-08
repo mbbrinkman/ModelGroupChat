@@ -2715,10 +2715,6 @@ You should respond directly with your message content - do NOT add extra formatt
 
         function buildMessagesForAPI(model, excludeMessage = null) {
             const messages = [];
-            let lastRole = null;
-
-            // Check if we're in a multi-model mode where models talk to each other
-            const isMultiModelMode = multiModelMode === 'serial' || multiModelMode === 'rotating' || multiModelMode === 'autonomous';
 
             // Filter messages based on mode
             let conversationToUse = [...currentConversation];
@@ -2768,8 +2764,8 @@ You should respond directly with your message content - do NOT add extra formatt
                             // Trim leading/trailing whitespace from user messages too
                             let textContent = msg.content.trim();
 
-                            // In multi-model mode, prefix user messages with their identifier to flatten hierarchy
-                            if (isMultiModelMode && selectedModelIndices.length > 1) {
+                            // With multiple models, prefix user messages for flat hierarchy
+                            if (selectedModelIndices.length > 1) {
                                 textContent = `${userIdentifier} said: ${textContent}`;
                             }
 
@@ -2806,8 +2802,8 @@ You should respond directly with your message content - do NOT add extra formatt
                         // Trim leading/trailing whitespace from user messages too
                         content = (msg.content || '').trim();
 
-                        // In multi-model mode, prefix user messages with their identifier to flatten hierarchy
-                        if (isMultiModelMode && selectedModelIndices.length > 1) {
+                        // With multiple models, prefix user messages for flat hierarchy
+                        if (selectedModelIndices.length > 1) {
                             content = `${userIdentifier} said: ${content}`;
                         }
                     }
@@ -2816,7 +2812,6 @@ You should respond directly with your message content - do NOT add extra formatt
                         role: 'user',
                         content: content
                     });
-                    lastRole = 'user';
                 } else if (msg.role === 'assistant') {
                     // Build content string from all available content sources
                     let content = '';
@@ -2846,25 +2841,23 @@ You should respond directly with your message content - do NOT add extra formatt
                         continue;
                     }
 
-                    // In multi-model modes (serial, rotating, autonomous), convert ALL assistant messages to user role
-                    // This prevents confusion and matches how models are trained (system + user inputs → assistant response)
-                    let role = 'user';
-                    if (!isMultiModelMode) {
-                        // In parallel mode, keep the assistant role but convert consecutive assistants to user
-                        role = lastRole === 'assistant' ? 'user' : 'assistant';
+                    // With multiple models: use 'user' role with name prefix for flat hierarchy
+                    // With single model: keep traditional 'assistant' role
+                    if (selectedModelIndices.length > 1) {
+                        if (msg.modelName) {
+                            const sanitizedModelName = sanitizeModelName(msg.modelName);
+                            content = `${sanitizedModelName} said: ${content}`;
+                        }
+                        messages.push({
+                            role: 'user',
+                            content: content
+                        });
+                    } else {
+                        messages.push({
+                            role: 'assistant',
+                            content: content
+                        });
                     }
-
-                    // Add model name prefix when sending as user
-                    if (role === 'user' && msg.modelName) {
-                        const sanitizedModelName = sanitizeModelName(msg.modelName);
-                        content = `${sanitizedModelName} said: ${content}`;
-                    }
-
-                    messages.push({
-                        role: role,
-                        content: content
-                    });
-                    lastRole = role;
                 }
             }
 
