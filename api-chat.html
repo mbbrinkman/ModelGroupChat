@@ -342,20 +342,15 @@
 
         #message-input.editing {
             border-color: #f0ad4e;
-            background: #2a2518;
         }
 
         #edit-indicator {
             display: none;
-            background: #f0ad4e;
-            color: #1a1a1a;
-            padding: 8px 12px;
-            border-radius: 8px 8px 0 0;
-            font-size: 13px;
-            font-weight: 600;
-            margin-bottom: -1px;
+            color: #f0ad4e;
+            font-size: 12px;
+            margin-bottom: 4px;
             align-items: center;
-            justify-content: space-between;
+            gap: 8px;
         }
 
         #edit-indicator.visible {
@@ -364,16 +359,16 @@
 
         #edit-indicator button {
             background: transparent;
-            border: 1px solid #1a1a1a;
-            color: #1a1a1a;
-            padding: 4px 10px;
-            border-radius: 4px;
+            border: none;
+            color: #888;
+            padding: 0;
             cursor: pointer;
             font-size: 12px;
+            text-decoration: underline;
         }
 
         #edit-indicator button:hover {
-            background: rgba(0,0,0,0.1);
+            color: #e0e0e0;
         }
 
         .file-upload-btn, .model-select, #send-btn {
@@ -656,8 +651,8 @@
                     <button class="model-select" onclick="newChat()">New Chat</button>
                 </div>
                 <div id="edit-indicator">
-                    <span>Editing message...</span>
-                    <button onclick="cancelEditMode()">Cancel</button>
+                    <span>editing</span>
+                    <button onclick="cancelEditMode()">cancel</button>
                 </div>
                 <textarea id="message-input" placeholder="Type a message... (Click Send button to send)"></textarea>
                 <div class="send-controls">
@@ -3868,94 +3863,125 @@ Simply respond directly as ${sanitizedName} with your own authentic perspective.
         function renderMarkdownWithLatex(text) {
             if (!text) return '';
 
-            // Escape HTML first
-            let processed = escapeHtml(text);
-
-            // If neither rendering is enabled, just return escaped text
+            // If neither rendering is enabled, just escape and return
             if (!enableLatexRendering && !enableMarkdownRendering) {
-                return processed;
+                return escapeHtml(text);
             }
 
-            // Mask code blocks before any processing
+            // Use null byte delimiters for masks (won't appear in normal text)
             const masks = [];
-            processed = processed.replace(/```[\s\S]+?```/g, m => {
+            let processed = text; // Work with RAW text first (fixes double-escaping)
+
+            // 1. Mask fenced code blocks on raw text (captures language specifier separately)
+            processed = processed.replace(/```(\w*)\n?([\s\S]*?)```/g, (match, lang, code) => {
                 const id = masks.length;
-                masks.push(m);
-                return `@@XCODEX${id}@@`;
-            });
-            processed = processed.replace(/`[^`\n]+`/g, m => {
-                const id = masks.length;
-                masks.push(m);
-                return `@@XCODEX${id}@@`;
+                masks.push({ type: 'fenced', lang: lang || '', code: code });
+                return `\x00MASK${id}\x00`;
             });
 
-            // Mask [Thinking: ...] blocks (models may mimic this format from history)
+            // 2. Mask inline code on raw text (now supports content with newlines)
+            processed = processed.replace(/`([^`]+)`/g, (match, code) => {
+                const id = masks.length;
+                masks.push({ type: 'inline', code: code });
+                return `\x00MASK${id}\x00`;
+            });
+
+            // 3. Mask [Thinking: ...] blocks
             processed = processed.replace(/\[Thinking:[\s\S]+?\]/g, m => {
                 const id = masks.length;
-                masks.push(m);
-                return `@@XCODEX${id}@@`;
+                masks.push({ type: 'thinking', content: m });
+                return `\x00MASK${id}\x00`;
             });
 
-            // LaTeX rendering (if enabled and loaded)
+            // 4. Mask and render LaTeX on raw text (fixes HTML entity issues in LaTeX)
             if (enableLatexRendering && typeof katex !== 'undefined') {
-                // Block LaTeX: \[ ... \] and $$ ... $$
+                // Block LaTeX: \[...\] and $$...$$
                 processed = processed.replace(/\\\[([\s\S]+?)\\\]/g, (match, latex) => {
+                    const id = masks.length;
                     try {
-                        return katex.renderToString(latex.trim(), { throwOnError: false, displayMode: true });
+                        const rendered = katex.renderToString(latex.trim(), { throwOnError: false, displayMode: true });
+                        masks.push({ type: 'latex-rendered', html: rendered });
                     } catch (e) {
-                        return match;
+                        masks.push({ type: 'latex-failed', raw: match });
                     }
+                    return `\x00MASK${id}\x00`;
                 });
                 processed = processed.replace(/\$\$([\s\S]+?)\$\$/g, (match, latex) => {
+                    const id = masks.length;
                     try {
-                        return katex.renderToString(latex.trim(), { throwOnError: false, displayMode: true });
+                        const rendered = katex.renderToString(latex.trim(), { throwOnError: false, displayMode: true });
+                        masks.push({ type: 'latex-rendered', html: rendered });
                     } catch (e) {
-                        return match;
+                        masks.push({ type: 'latex-failed', raw: match });
                     }
+                    return `\x00MASK${id}\x00`;
                 });
-                // Inline LaTeX: \( ... \) and $ ... $
+                // Inline LaTeX: \(...\)
                 processed = processed.replace(/\\\(([\s\S]+?)\\\)/g, (match, latex) => {
+                    const id = masks.length;
                     try {
-                        return katex.renderToString(latex.trim(), { throwOnError: false, displayMode: false });
+                        const rendered = katex.renderToString(latex.trim(), { throwOnError: false, displayMode: false });
+                        masks.push({ type: 'latex-rendered', html: rendered });
                     } catch (e) {
-                        return match;
+                        masks.push({ type: 'latex-failed', raw: match });
                     }
+                    return `\x00MASK${id}\x00`;
                 });
-                processed = processed.replace(/\$([^\$\n]+)\$/g, (match, latex) => {
-                    try {
-                        return katex.renderToString(latex, { throwOnError: false, displayMode: false });
-                    } catch (e) {
-                        return match;
+                // Single $...$ - require non-space adjacent to delimiters to reduce false positives
+                // This prevents "$5 and $10" from matching, but "$x$" and "$x + y$" still work
+                processed = processed.replace(/\$([^\$\s](?:[^\$]*[^\$\s])?)\$/g, (match, latex) => {
+                    // Additional check: skip if this looks like a price (digit followed by non-math)
+                    if (/^\d+(?:\.\d+)?$/.test(latex)) {
+                        return match; // Don't convert plain numbers like $5$ or $10.50$
                     }
+                    const id = masks.length;
+                    try {
+                        const rendered = katex.renderToString(latex.trim(), { throwOnError: false, displayMode: false });
+                        masks.push({ type: 'latex-rendered', html: rendered });
+                    } catch (e) {
+                        masks.push({ type: 'latex-failed', raw: match });
+                    }
+                    return `\x00MASK${id}\x00`;
                 });
             }
 
-            // Markdown rendering (if enabled and loaded)
+            // 5. NOW escape the remaining text (everything except masked regions)
+            processed = escapeHtml(processed);
+
+            // 6. Process markdown on escaped text (safe - no XSS since we don't unescape!)
             if (enableMarkdownRendering && typeof snarkdown !== 'undefined') {
-                // Snarkdown expects unescaped input
-                const unescaped = processed
-                    .replace(/&lt;/g, '<')
-                    .replace(/&gt;/g, '>')
-                    .replace(/&amp;/g, '&')
-                    .replace(/&quot;/g, '"')
-                    .replace(/&#039;/g, "'");
-                processed = snarkdown(unescaped);
-                // Convert remaining newlines to <br>, but not after block elements
-                // (snarkdown handles paragraph structure, we just need inline breaks)
-                processed = processed.replace(/([^>])\n/g, '$1<br>');
+                processed = snarkdown(processed);
+                // Convert newlines to <br>, but not adjacent to HTML tags
+                processed = processed.replace(/>[\t ]*\n/g, '>\n'); // Preserve newlines after tags
+                processed = processed.replace(/\n[\t ]*</g, '\n<'); // Preserve newlines before tags
+                processed = processed.replace(/([^>\n])\n([^<])/g, '$1<br>\n$2'); // Add <br> elsewhere
             }
 
-            // Restore masked code blocks
-            processed = processed.replace(/@@XCODEX(\d+)@@/g, (_, i) => {
-                const masked = masks[+i];
-                if (masked.startsWith('```')) {
-                    const content = masked.slice(3, -3);
-                    return '<pre style="background: #2a2a2a; padding: 12px; border-radius: 6px; overflow-x: auto; margin: 8px 0;">' + escapeHtml(content) + '</pre>';
-                } else if (masked.startsWith('`')) {
-                    const content = masked.slice(1, -1);
-                    return '<code style="background: #3a3a3a; padding: 2px 6px; border-radius: 3px;">' + escapeHtml(content) + '</code>';
+            // 7. Restore all masked content
+            processed = processed.replace(/\x00MASK(\d+)\x00/g, (match, i) => {
+                const mask = masks[+i];
+                if (!mask) return escapeHtml(match); // Safety: if mask doesn't exist, escape the placeholder
+
+                switch (mask.type) {
+                    case 'fenced': {
+                        // Strip leading newline from code if present
+                        let code = mask.code;
+                        if (code.startsWith('\n')) code = code.slice(1);
+                        if (code.endsWith('\n')) code = code.slice(0, -1);
+                        const langAttr = mask.lang ? ` data-lang="${escapeHtml(mask.lang)}"` : '';
+                        return `<pre style="background: #2a2a2a; padding: 12px; border-radius: 6px; overflow-x: auto; margin: 8px 0;"${langAttr}><code>${escapeHtml(code)}</code></pre>`;
+                    }
+                    case 'inline':
+                        return `<code style="background: #3a3a3a; padding: 2px 6px; border-radius: 3px;">${escapeHtml(mask.code)}</code>`;
+                    case 'thinking':
+                        return escapeHtml(mask.content);
+                    case 'latex-rendered':
+                        return mask.html; // KaTeX output is safe HTML
+                    case 'latex-failed':
+                        return escapeHtml(mask.raw);
+                    default:
+                        return escapeHtml(match);
                 }
-                return masked;
             });
 
             return processed;
