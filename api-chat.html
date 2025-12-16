@@ -2756,11 +2756,45 @@
             return sanitized;
         }
 
+        // Check if conversation requires multi-model handling (either multiple selected or history has multiple)
+        function isMultiModelContext() {
+            if (selectedModelIndices.length > 1) return true;
+            // Check if conversation history has messages from multiple distinct models
+            const modelsInHistory = new Set();
+            for (const msg of currentConversation) {
+                if (msg.role === 'assistant' && msg.modelName) {
+                    modelsInHistory.add(msg.modelName);
+                    if (modelsInHistory.size > 1) return true;
+                }
+            }
+            return false;
+        }
+
+        // Get all model names that have participated in the conversation
+        function getModelsInConversation() {
+            const modelsInHistory = new Set();
+            for (const msg of currentConversation) {
+                if (msg.role === 'assistant' && msg.modelName) {
+                    modelsInHistory.add(msg.modelName);
+                }
+            }
+            // Also include currently selected models
+            for (const idx of selectedModelIndices) {
+                if (models[idx] && models[idx].name) {
+                    modelsInHistory.add(models[idx].name);
+                }
+            }
+            return Array.from(modelsInHistory);
+        }
+
         function buildSystemPrompt(model) {
             let systemPrompt = '';
 
-            // Add model identity information if enabled and in multi-model mode
-            if (enableModelIdentity && selectedModelIndices.length > 1 && model.name) {
+            // Add model identity information if enabled and in multi-model context
+            // This includes: multiple models selected OR conversation history has multiple models
+            const needsIdentity = enableModelIdentity && isMultiModelContext() && model.name;
+
+            if (needsIdentity) {
                 const sanitizedName = sanitizeModelName(model.name);
                 systemPrompt = `You are ${sanitizedName}. This is your identity in this conversation. You must ONLY respond as ${sanitizedName} - never simulate, roleplay, or speak as any other participant.
 
@@ -2768,7 +2802,7 @@ CRITICAL: Do NOT mimic, impersonate, or generate responses for other participant
 
 `;
 
-                // Build list of all participants (treating everyone equally)
+                // Build list of all participants - include models from history, not just currently selected
                 const allParticipants = [];
 
                 if (multiModelMode === 'parallel') {
@@ -2776,18 +2810,18 @@ CRITICAL: Do NOT mimic, impersonate, or generate responses for other participant
                     allParticipants.push(userIdentifier);
                 } else if (multiModelMode === 'autonomous') {
                     // In autonomous mode, only AI participants (no user)
-                    const otherModels = selectedModelIndices
-                        .map(idx => models[idx])
-                        .filter(m => m.name !== model.name)
-                        .map(m => sanitizeModelName(m.name));
+                    // Include all models from conversation history
+                    const otherModels = getModelsInConversation()
+                        .filter(name => name !== model.name)
+                        .map(name => sanitizeModelName(name));
                     allParticipants.push(...otherModels);
                 } else {
                     // In serial/rotating modes, include all participants equally
                     allParticipants.push(userIdentifier);
-                    const otherModels = selectedModelIndices
-                        .map(idx => models[idx])
-                        .filter(m => m.name !== model.name)
-                        .map(m => sanitizeModelName(m.name));
+                    // Include all models from conversation history
+                    const otherModels = getModelsInConversation()
+                        .filter(name => name !== model.name)
+                        .map(name => sanitizeModelName(name));
                     allParticipants.push(...otherModels);
                 }
 
@@ -2875,8 +2909,8 @@ Simply respond directly as ${sanitizedName} with your own authentic perspective.
                             // Trim leading/trailing whitespace from user messages too
                             let textContent = msg.content.trim();
 
-                            // With multiple models, prefix user messages for flat hierarchy
-                            if (selectedModelIndices.length > 1) {
+                            // With multiple models (or history from multiple), prefix user messages for flat hierarchy
+                            if (isMultiModelContext()) {
                                 textContent = `${userIdentifier} said: ${textContent}`;
                             }
 
@@ -2913,8 +2947,8 @@ Simply respond directly as ${sanitizedName} with your own authentic perspective.
                         // Trim leading/trailing whitespace from user messages too
                         content = (msg.content || '').trim();
 
-                        // With multiple models, prefix user messages for flat hierarchy
-                        if (selectedModelIndices.length > 1) {
+                        // With multiple models (or history from multiple), prefix user messages for flat hierarchy
+                        if (isMultiModelContext()) {
                             content = `${userIdentifier} said: ${content}`;
                         }
                     }
@@ -2952,9 +2986,9 @@ Simply respond directly as ${sanitizedName} with your own authentic perspective.
                         continue;
                     }
 
-                    // With multiple models: use 'user' role with name prefix for flat hierarchy
+                    // With multiple models (or history from multiple): use 'user' role with name prefix for flat hierarchy
                     // With single model: keep traditional 'assistant' role
-                    if (selectedModelIndices.length > 1) {
+                    if (isMultiModelContext()) {
                         if (msg.modelName) {
                             const sanitizedModelName = sanitizeModelName(msg.modelName);
                             content = `${sanitizedModelName} said: ${content}`;
