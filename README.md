@@ -64,7 +64,7 @@ Example model IDs:
 
 ## Technical Details
 
-- Single HTML file application (~2800 lines)
+- Single HTML file application (~4200 lines)
 - No build process or dependencies required
 - Client-side JavaScript only
 - Uses KaTeX (via CDN) for LaTeX math rendering
@@ -107,6 +107,7 @@ The application supports all OpenRouter API parameters:
 - provider: Force specific provider
 - transforms: Content filtering
 - reasoning: Enable extended thinking/reasoning
+- timeout: Request timeout in milliseconds (default: 120000 = 2 minutes)
 
 See OpenRouter documentation for parameter details: https://openrouter.ai/docs
 
