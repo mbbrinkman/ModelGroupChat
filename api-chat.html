@@ -908,6 +908,7 @@
                     <li><code>models</code>: Fallback model array</li>
                     <li><code>route</code>: "fallback" to use model list</li>
                     <li><code>transforms</code>: ["middle-out"] for content filtering</li>
+                    <li><code>timeout</code>: Request timeout in milliseconds (default: 120000 = 2 minutes). Increase for extended thinking or complex requests.</li>
                 </ul>
 
                 <h3>Data Storage</h3>
@@ -1506,7 +1507,8 @@
   "provider": null,
   "models": null,
   "route": null,
-  "transforms": null
+  "transforms": null,
+  "timeout": 120000
 `;
         }
 
@@ -3133,8 +3135,9 @@ Simply respond directly as ${sanitizedName} with your own authentic perspective.
             currentAbortControllers.push(controller);
 
             try {
-                // Add timeout to prevent hanging
-                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+                // Add timeout to prevent hanging (configurable per-model, default 120 seconds)
+                const timeoutMs = model.timeout || 120000;
+                const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
                 response = await fetch(model.endpoint, {
                     method: 'POST',
