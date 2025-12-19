@@ -10,9 +10,10 @@ https://mbbrinkman.github.io/my_api_chat/api-chat.html
 
 ### Multi-Model Conversation Modes
 - **Parallel**: All selected models respond independently to each message
-- **Serial**: Models respond sequentially, each seeing previous model responses
-- **Rotating**: Serial mode with model order rotation on each turn
-- **Autonomous**: Models converse with each other without user input
+- **Vote**: Models vote (0.1-10.0) on who responds next; winner gives the response
+  - Debiasing normalizes voting patterns via z-score
+  - Human participation toggle for autonomous conversations
+  - Force-model feature to bypass voting (click model name)
 
 ### Core Functionality
 - Real-time streaming responses

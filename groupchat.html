@@ -658,7 +658,7 @@
                 <div class="send-controls">
                     <button id="send-btn">Send</button>
                     <button id="stop-btn">Stop</button>
-                    <button id="auto-btn" style="display: none;">Start Auto</button>
+                    <button id="auto-btn" style="display: none;">Start Vote</button>
                 </div>
             </div>
             <div id="model-picker-popup" style="display: none;">
@@ -674,9 +674,26 @@
                     <div class="mode-selector">
                         <label>Mode:</label>
                         <label><input type="radio" name="model-mode" value="parallel" checked> Parallel</label>
-                        <label><input type="radio" name="model-mode" value="serial"> Serial</label>
-                        <label><input type="radio" name="model-mode" value="rotating"> Rotating</label>
-                        <label><input type="radio" name="model-mode" value="autonomous"> Autonomous</label>
+                        <label><input type="radio" name="model-mode" value="vote"> Vote</label>
+                    </div>
+                    <div class="mode-selector" style="margin-top: 10px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="human-participates-checkbox" checked style="width: auto;">
+                            <span>Human participates in conversation</span>
+                        </label>
+                        <div style="font-size: 11px; color: #666; margin-top: 4px; margin-left: 24px;">
+                            When unchecked, models converse without human input (Vote mode only)
+                        </div>
+                    </div>
+                    <div class="mode-selector" style="margin-top: 10px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="enable-debiasing-checkbox" checked style="width: auto;">
+                            <span>Enable vote debiasing (z-score)</span>
+                        </label>
+                        <div style="margin-left: 28px; margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+                            <label for="vote-history-length" style="font-size: 13px; color: #aaa;">History length:</label>
+                            <input type="number" id="vote-history-length" min="3" max="100" value="10" style="width: 60px; padding: 4px 8px; background: #2a2a2a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px;">
+                        </div>
                     </div>
                     <div class="mode-selector" style="margin-top: 10px;">
                         <label for="iteration-count">Iterations:</label>
@@ -686,7 +703,7 @@
                     <div class="mode-selector" style="margin-top: 10px;">
                         <label for="response-delay">Response Delay:</label>
                         <input type="number" id="response-delay" min="0" max="10000" step="100" value="1000" style="width: 80px; padding: 4px 8px; background: #2a2a2a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px;">
-                        <span style="font-size: 12px; color: #888; margin-left: 8px;">ms delay between responses (Serial/Rotating/Autonomous)</span>
+                        <span style="font-size: 12px; color: #888; margin-left: 8px;">ms delay between responses (Vote mode)</span>
                     </div>
                     <div class="mode-selector" style="margin-top: 10px;">
                         <label for="history-limit">Message History Limit:</label>
@@ -694,7 +711,7 @@
                         <span style="font-size: 12px; color: #888; margin-left: 8px;">0 = all messages</span>
                         <div style="font-size: 11px; color: #666; margin-top: 4px; margin-left: 24px;">
                             Parallel mode: Sends last N messages per model separately<br>
-                            Other modes: Sends last N messages (model-agnostic)
+                            Vote mode: Sends last N messages (model-agnostic)
                         </div>
                     </div>
                     <div class="mode-selector" style="margin-top: 10px;">
@@ -815,22 +832,48 @@
                 <h3>Multi-Model Modes</h3>
                 <ul>
                     <li><strong>Parallel:</strong> All selected models respond independently to your message. Each only sees your messages, not other models' responses.</li>
-                    <li><strong>Serial:</strong> Models respond one after another. Each model sees all previous messages including other models' responses.</li>
-                    <li><strong>Rotating:</strong> Like Serial, but the order rotates each turn (1,2,3 → 3,1,2 → 2,3,1 → repeat).</li>
-                    <li><strong>Autonomous:</strong> Models converse with each other without human input. Click "Start Auto" to begin.</li>
+                    <li><strong>Vote:</strong> Models vote on who responds next. The model with the highest adjusted vote wins and generates the response. Enables dynamic, self-organizing conversations.</li>
                 </ul>
 
                 <h3>Iterations</h3>
                 <p>You can set the number of iterations (1-100) to control how many times models reply:</p>
                 <ul>
                     <li><strong>Parallel:</strong> All models respond N times in parallel (e.g., 2 iterations = 2 rounds of all models responding simultaneously)</li>
-                    <li><strong>Serial:</strong> The complete sequence of models responds N times (e.g., 3 iterations with 2 models = model1, model2, model1, model2, model1, model2)</li>
-                    <li><strong>Rotating:</strong> The rotated sequence repeats N times with order continuing to rotate each iteration</li>
-                    <li><strong>Autonomous:</strong> Each model responds exactly N times (e.g., 10 iterations with 3 models = 30 total responses, 10 per model)</li>
+                    <li><strong>Vote:</strong> N total responses are generated via voting (each round, models vote and the winner responds)</li>
+                </ul>
+
+                <h3>Human Participation</h3>
+                <p>In Vote mode, you can choose whether to participate:</p>
+                <ul>
+                    <li><strong>Human Participates (default):</strong> You send messages normally, then models vote on who responds. Your messages appear in the conversation.</li>
+                    <li><strong>Human Does Not Participate:</strong> Models converse autonomously via voting. Click "Start Vote" to begin. Models will vote and respond without human input.</li>
+                </ul>
+
+                <h3>Vote Mode Details</h3>
+                <h4>Voting Process</h4>
+                <ul>
+                    <li><strong>Voting Round:</strong> Each model privately votes (0.1-10.0) on how much they want to respond next</li>
+                    <li><strong>Invalid Votes:</strong> If a model's vote is invalid, it gets one retry; if still invalid, it gets a default vote of 5.0</li>
+                    <li><strong>Debiasing:</strong> Votes are adjusted using z-score normalization based on each model's voting history</li>
+                    <li><strong>Winner:</strong> Highest adjusted vote wins</li>
+                    <li><strong>Tiebreaker:</strong> If votes are tied, the model that responded longest ago wins</li>
+                </ul>
+
+                <h4>Force Model</h4>
+                <p>In Vote mode, click a model's name in the model picker to force it to respond next, bypassing voting entirely.</p>
+
+                <h4>Debiasing</h4>
+                <p>Debiasing normalizes votes across models with different voting tendencies:</p>
+                <ul>
+                    <li>Tracks each model's last N votes (configurable, default 10)</li>
+                    <li>Applies z-score normalization: <code>z = (vote - mean) / stddev</code></li>
+                    <li>A model voting higher than usual gets a positive z-score; lower than usual gets negative</li>
+                    <li>Models with insufficient history (less than 3 votes) use approximate z-scores</li>
+                    <li>Can be disabled in the model picker settings</li>
                 </ul>
 
                 <h3>Flattened Participant Structure</h3>
-                <p>In multi-model conversations (Serial, Rotating, Autonomous), all participants are treated equally with no hierarchy:</p>
+                <p>In multi-model Vote mode conversations, all participants are treated equally with no hierarchy:</p>
                 <ul>
                     <li><strong>Equal Participants:</strong> Your messages are prefixed with your identifier (e.g., "User said: hello"), just like model messages (e.g., "Claude said: hi").</li>
                     <li><strong>No Special Treatment:</strong> Models receive no indication that you are different from other participants. Everyone is simply a named participant in the conversation.</li>
@@ -839,8 +882,7 @@
                 <p><strong>Mode-Specific Behavior:</strong></p>
                 <ul>
                     <li><strong>Parallel:</strong> Each model converses independently with you. Your messages are not prefixed since there's only one other participant.</li>
-                    <li><strong>Serial/Rotating:</strong> All participants (you and all models) are listed equally. Messages are prefixed with participant identifiers.</li>
-                    <li><strong>Autonomous:</strong> Models converse with each other without your participation.</li>
+                    <li><strong>Vote:</strong> All participants (you and all models) are listed equally. Messages are prefixed with participant identifiers.</li>
                 </ul>
                 <p><strong>Multiple Instances:</strong> You can select multiple instances of the same model by using the number input next to each model in the picker. The model name is simply a chat identifier to distinguish between different instances - multiple instances of the same underlying model can participate with different names (e.g., "GPT-4 Debater 1" and "GPT-4 Debater 2").</p>
 
@@ -1034,10 +1076,15 @@
         let userStoppedGeneration = false; // Flag to prevent subsequent models from responding after stop is pressed
         let selectedModelIndices = [];
         let multiModelMode = 'parallel';
-        let rotationIndex = 0;
-        let isAutonomousRunning = false;
-        let autonomousRounds = 0;
         let iterationCount = 1;
+        // Vote mode state
+        let humanParticipates = true;      // Whether human participates in conversation (Vote mode)
+        let enableDebiasing = true;        // Enable z-score normalization on votes
+        let voteHistoryLength = 10;        // Track last N votes per model for debiasing
+        let voteHistory = {};              // { modelName: [vote1, vote2, ...] }
+        let forcedModelIndex = null;       // Force specific model to respond next (bypasses voting)
+        let isVoteModeRunning = false;     // Vote mode (no human) running state
+        let voteRounds = 0;                // Current round counter for vote mode
         let messageHistoryLimit = 0; // 0 means all messages
         let includeFilesInHistory = false;
         let responseDelay = 1000; // Delay in ms between responses in serial/rotating/autonomous modes
@@ -1136,8 +1183,16 @@
                     .filter(idx => Number.isInteger(idx) && idx >= 0 && idx < models.length);
 
                 multiModelMode = await loadData('multiModelMode', 'parallel');
-                rotationIndex = await loadData('rotationIndex', 0);
+                // Migrate old mode values to valid options
+                if (multiModelMode === 'serial' || multiModelMode === 'rotating' || multiModelMode === 'autonomous') {
+                    multiModelMode = 'parallel';
+                }
                 iterationCount = await loadData('iterationCount', 1);
+                // Vote mode settings
+                humanParticipates = await loadData('humanParticipates', true);
+                enableDebiasing = await loadData('enableDebiasing', true);
+                voteHistoryLength = await loadData('voteHistoryLength', 10);
+                voteHistory = await loadData('voteHistory', {});
                 messageHistoryLimit = await loadData('messageHistoryLimit', 0);
                 includeFilesInHistory = await loadData('includeFilesInHistory', false);
                 responseDelay = await loadData('responseDelay', 1000);
@@ -1164,8 +1219,11 @@
                     saveData('currentConversation', currentConversation),
                     saveData('selectedModelIndices', selectedModelIndices),
                     saveData('multiModelMode', multiModelMode),
-                    saveData('rotationIndex', rotationIndex),
                     saveData('iterationCount', iterationCount),
+                    saveData('humanParticipates', humanParticipates),
+                    saveData('enableDebiasing', enableDebiasing),
+                    saveData('voteHistoryLength', voteHistoryLength),
+                    saveData('voteHistory', voteHistory),
                     saveData('messageHistoryLimit', messageHistoryLimit),
                     saveData('includeFilesInHistory', includeFilesInHistory),
                     saveData('responseDelay', responseDelay),
@@ -1270,16 +1328,47 @@
                     const newMode = e.target.value;
                     multiModelMode = newMode;
 
-                    // Reset rotation index when leaving rotating mode
-                    if (newMode !== 'rotating') {
-                        rotationIndex = 0;
-                    }
+                    // Reset forced model when changing modes
+                    forcedModelIndex = null;
 
                     updateUIForMode();
                     updateModelPickerButton();
                     saveToStorage();
                 });
             });
+
+            // Human participates checkbox (Vote mode)
+            const humanParticipatesCheckbox = document.getElementById('human-participates-checkbox');
+            if (humanParticipatesCheckbox) {
+                humanParticipatesCheckbox.addEventListener('change', (e) => {
+                    humanParticipates = e.target.checked;
+                    updateUIForMode();
+                    saveToStorage();
+                });
+            }
+
+            // Enable debiasing checkbox (Vote mode)
+            const enableDebiasingCheckbox = document.getElementById('enable-debiasing-checkbox');
+            if (enableDebiasingCheckbox) {
+                enableDebiasingCheckbox.addEventListener('change', (e) => {
+                    enableDebiasing = e.target.checked;
+                    saveToStorage();
+                });
+            }
+
+            // Vote history length input (Vote mode)
+            const voteHistoryLengthInput = document.getElementById('vote-history-length');
+            if (voteHistoryLengthInput) {
+                voteHistoryLengthInput.addEventListener('change', (e) => {
+                    const value = parseInt(e.target.value);
+                    if (value >= 3 && value <= 100) {
+                        voteHistoryLength = value;
+                        saveToStorage();
+                    } else {
+                        e.target.value = voteHistoryLength;
+                    }
+                });
+            }
 
             // Iteration count input
             const iterationInput = document.getElementById('iteration-count');
@@ -1398,7 +1487,7 @@
             }
 
             // Autonomous button
-            document.getElementById('auto-btn').addEventListener('click', toggleAutonomous);
+            document.getElementById('auto-btn').addEventListener('click', toggleVoteMode);
 
             // Resume audio context when returning to the tab/app (iOS resurrection)
             document.addEventListener('visibilitychange', async () => {
@@ -1610,6 +1699,37 @@
                     const modelName = document.createElement('div');
                     modelName.className = 'model-name';
                     modelName.textContent = model.name;
+
+                    // Force model feature: click to make this model respond next (Vote mode)
+                    modelName.style.cursor = 'pointer';
+                    modelName.title = 'Click to force this model to respond next (Vote mode only)';
+                    modelName.addEventListener('click', (e) => {
+                        e.stopPropagation(); // Don't toggle checkbox
+                        if (multiModelMode === 'vote' && checkbox.checked) {
+                            forcedModelIndex = index;
+                            // Visual feedback: highlight the forced model
+                            document.querySelectorAll('.model-name').forEach(el => {
+                                el.style.color = '#e0e0e0';
+                                el.style.fontWeight = 'normal';
+                            });
+                            modelName.style.color = '#4a9eff';
+                            modelName.style.fontWeight = 'bold';
+                            // Show brief notification
+                            const notification = document.createElement('div');
+                            notification.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #4a9eff; color: white; padding: 10px 20px; border-radius: 8px; z-index: 10000; font-size: 14px;';
+                            notification.textContent = `${model.name} will respond next (bypasses voting)`;
+                            document.body.appendChild(notification);
+                            setTimeout(() => notification.remove(), 2000);
+                        } else if (multiModelMode !== 'vote') {
+                            // Show hint if not in vote mode
+                            const notification = document.createElement('div');
+                            notification.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #666; color: white; padding: 10px 20px; border-radius: 8px; z-index: 10000; font-size: 14px;';
+                            notification.textContent = 'Force model only works in Vote mode';
+                            document.body.appendChild(notification);
+                            setTimeout(() => notification.remove(), 2000);
+                        }
+                    });
+
                     modelInfo.appendChild(modelName);
 
                     // Show active system prompt (global overrides per-model)
@@ -1734,6 +1854,24 @@
                 markdownRenderingCheckbox.checked = enableMarkdownRendering;
             }
 
+            // Set the human participates checkbox (Vote mode)
+            const humanParticipatesCheckbox = document.getElementById('human-participates-checkbox');
+            if (humanParticipatesCheckbox) {
+                humanParticipatesCheckbox.checked = humanParticipates;
+            }
+
+            // Set the enable debiasing checkbox (Vote mode)
+            const enableDebiasingCheckbox = document.getElementById('enable-debiasing-checkbox');
+            if (enableDebiasingCheckbox) {
+                enableDebiasingCheckbox.checked = enableDebiasing;
+            }
+
+            // Set the vote history length input (Vote mode)
+            const voteHistoryLengthInput = document.getElementById('vote-history-length');
+            if (voteHistoryLengthInput) {
+                voteHistoryLengthInput.value = voteHistoryLength;
+            }
+
             popup.style.display = 'flex';
         }
 
@@ -1747,13 +1885,23 @@
             const sendBtn = document.getElementById('send-btn');
             const messageInput = document.getElementById('message-input');
 
-            if (multiModelMode === 'autonomous') {
+            if (multiModelMode === 'vote' && !humanParticipates) {
+                // Vote mode without human: Show Start/Stop Vote button
                 autoBtn.style.display = 'block';
+                autoBtn.textContent = isVoteModeRunning ? 'Stop Vote' : 'Start Vote';
+                autoBtn.style.background = isVoteModeRunning ? '#ff4a4a' : '#4a9eff';
                 sendBtn.style.display = 'none';
                 messageInput.disabled = true;
-                messageInput.placeholder = 'Autonomous mode - models will converse automatically';
+                messageInput.placeholder = 'Vote mode (no human) - models will converse automatically';
                 updateModelPickerButton();
+            } else if (multiModelMode === 'vote' && humanParticipates) {
+                // Vote mode with human: Normal send button
+                autoBtn.style.display = 'none';
+                sendBtn.style.display = 'block';
+                messageInput.disabled = false;
+                messageInput.placeholder = 'Type a message... (models will vote on who responds next)';
             } else {
+                // Parallel mode: Normal send button
                 autoBtn.style.display = 'none';
                 sendBtn.style.display = 'block';
                 messageInput.disabled = false;
@@ -1761,22 +1909,23 @@
             }
         }
 
-        async function toggleAutonomous() {
+        async function toggleVoteMode() {
             const autoBtn = document.getElementById('auto-btn');
 
-            if (isAutonomousRunning) {
-                isAutonomousRunning = false;
-                autoBtn.textContent = 'Start Auto';
+            if (isVoteModeRunning) {
+                isVoteModeRunning = false;
+                userStoppedGeneration = true;
+                autoBtn.textContent = 'Start Vote';
                 autoBtn.style.background = '#4a9eff';
                 return;
             }
 
             if (selectedModelIndices.length < 2) {
-                alert('Please select at least 2 models for autonomous mode');
+                alert('Please select at least 2 models for vote mode');
                 return;
             }
 
-            // If conversation is empty, add a starter message for autonomous mode
+            // If conversation is empty, add a starter message
             if (currentConversation.length === 0) {
                 const starterMessage = {
                     role: 'user',
@@ -1788,26 +1937,61 @@
                 renderConversation();
             }
 
-            isAutonomousRunning = true;
-            autonomousRounds = 0;
-            autoBtn.textContent = 'Stop Auto';
+            isVoteModeRunning = true;
+            voteRounds = 0;
+            userStoppedGeneration = false;
+            autoBtn.textContent = 'Stop Vote';
             autoBtn.style.background = '#ff4a4a';
 
-            // Run for iterationCount rounds per model (or until stopped manually)
-            // Total rounds = iterationCount * number of models
-            while (isAutonomousRunning && autonomousRounds < (iterationCount * selectedModelIndices.length)) {
-                try {
-                    await handleAutonomousRound();
-                    autonomousRounds++;
+            currentAbortControllers = [];
+            showStopButton();
+            startBackgroundAudio();
 
-                    // Delay between rounds (configurable)
-                    if (responseDelay > 0 && autonomousRounds < (iterationCount * selectedModelIndices.length)) {
+            // Run for iterationCount total rounds
+            while (isVoteModeRunning && voteRounds < iterationCount) {
+                try {
+                    // Conduct voting and get response
+                    let respondingModelIndex;
+
+                    if (forcedModelIndex !== null && selectedModelIndices.includes(forcedModelIndex)) {
+                        respondingModelIndex = forcedModelIndex;
+                        forcedModelIndex = null;
+                        console.log('Using forced model:', models[respondingModelIndex].name);
+                    } else {
+                        respondingModelIndex = await conductVotingRound();
+                        if (respondingModelIndex === null) {
+                            console.error('No valid votes, skipping round');
+                            voteRounds++;
+                            continue;
+                        }
+                    }
+
+                    const model = models[respondingModelIndex];
+                    const assistantMessage = {
+                        role: 'assistant',
+                        content: '',
+                        thinking: '',
+                        images: [],
+                        modelName: model.name,
+                        timestamp: new Date().toISOString()
+                    };
+                    currentConversation.push(assistantMessage);
+                    renderConversation();
+
+                    await streamResponse(model, assistantMessage);
+
+                    voteRounds++;
+                    saveToStorage();
+                    renderConversation();
+
+                    // Delay between rounds
+                    if (responseDelay > 0 && voteRounds < iterationCount && isVoteModeRunning) {
                         await new Promise(resolve => setTimeout(resolve, responseDelay));
                     }
                 } catch (error) {
-                    console.error('Autonomous error:', error);
+                    console.error('Vote mode error:', error);
 
-                    // Remove any empty assistant messages that were added before the error
+                    // Remove any empty assistant messages
                     currentConversation = currentConversation.filter(msg => {
                         if (msg.role === 'assistant') {
                             return msg.content || msg.thinking || (msg.images && msg.images.length > 0);
@@ -1815,12 +1999,12 @@
                         return true;
                     });
 
-                    isAutonomousRunning = false;
-                    autoBtn.textContent = 'Start Auto';
+                    isVoteModeRunning = false;
+                    autoBtn.textContent = 'Start Vote';
                     autoBtn.style.background = '#4a9eff';
                     saveToStorage();
                     renderConversation();
-                    alert('Error in autonomous mode: ' + error.message);
+                    alert('Error in vote mode: ' + error.message);
                 }
             }
 
@@ -1832,9 +2016,12 @@
                 return true;
             });
 
-            // Reset button when done (either completed iterations or stopped manually)
-            isAutonomousRunning = false;
-            autoBtn.textContent = 'Start Auto';
+            // Reset when done
+            isVoteModeRunning = false;
+            stopBackgroundAudio();
+            currentAbortControllers = [];
+            hideStopButton();
+            autoBtn.textContent = 'Start Vote';
             autoBtn.style.background = '#4a9eff';
             saveToStorage();
             renderConversation();
@@ -2421,11 +2608,11 @@
             // Set flag to prevent subsequent models from responding
             userStoppedGeneration = true;
 
-            // Stop autonomous mode if running
-            if (isAutonomousRunning) {
-                isAutonomousRunning = false;
+            // Stop vote mode (no human) if running
+            if (isVoteModeRunning) {
+                isVoteModeRunning = false;
                 const autoBtn = document.getElementById('auto-btn');
-                autoBtn.textContent = 'Start Auto';
+                autoBtn.textContent = 'Start Vote';
                 autoBtn.style.background = '#4a9eff';
             }
 
@@ -2496,10 +2683,8 @@
             try {
                 if (multiModelMode === 'parallel') {
                     await handleParallelMode();
-                } else if (multiModelMode === 'serial') {
-                    await handleSerialMode();
-                } else if (multiModelMode === 'rotating') {
-                    await handleRotatingMode();
+                } else if (multiModelMode === 'vote') {
+                    await handleVoteMode();
                 }
             } catch (error) {
                 console.error('Error:', error);
@@ -2573,152 +2758,444 @@
             }
         }
 
-        async function handleSerialMode() {
-            // Models answer sequentially, each seeing previous responses, repeated for iterationCount times
+        // ========== Vote Mode Functions ==========
+
+        async function handleVoteMode() {
+            // Vote mode: Models vote on who responds, winner generates response
             for (let iteration = 0; iteration < iterationCount; iteration++) {
-                for (let i = 0; i < selectedModelIndices.length; i++) {
-                    // Check if user stopped generation
-                    if (userStoppedGeneration) {
-                        console.log('User stopped generation, breaking out of serial mode');
-                        return;
-                    }
-
-                    const modelIndex = selectedModelIndices[i];
-                    const model = models[modelIndex];
-                    const assistantMessage = {
-                        role: 'assistant',
-                        content: '',
-                        thinking: '',
-                        images: [],
-                        modelName: model.name,
-                        timestamp: new Date().toISOString()
-                    };
-                    currentConversation.push(assistantMessage);
-                    renderConversation();
-
-                    try {
-                        await streamResponse(model, assistantMessage);
-                    } catch (error) {
-                        console.error('Error in serial mode:', error);
-                        // Set error message in the assistant message instead of empty content
-                        assistantMessage.content = `Error: ${error.message}`;
-                        renderConversation();
-                    }
-
-                    // Save and render after each model completes so next model sees the response
-                    saveToStorage();
-                    renderConversation();
-
-                    // Add delay before next model (unless it's the last model of the last iteration)
-                    if (responseDelay > 0 && !(iteration === iterationCount - 1 && i === selectedModelIndices.length - 1)) {
-                        await new Promise(resolve => setTimeout(resolve, responseDelay));
-                    }
-                }
-            }
-        }
-
-        async function handleRotatingMode() {
-            // Serial mode with rotating order, repeated for iterationCount times
-            for (let iteration = 0; iteration < iterationCount; iteration++) {
-                const orderedIndices = [...selectedModelIndices];
-
-                // Rotate based on rotationIndex
-                for (let i = 0; i < rotationIndex % orderedIndices.length; i++) {
-                    orderedIndices.push(orderedIndices.shift());
+                if (userStoppedGeneration) {
+                    console.log('User stopped generation, breaking out of vote mode');
+                    return;
                 }
 
-                // Process in rotated order
-                for (let i = 0; i < orderedIndices.length; i++) {
-                    // Check if user stopped generation
-                    if (userStoppedGeneration) {
-                        console.log('User stopped generation, breaking out of rotating mode');
-                        return;
-                    }
+                // Determine which model responds
+                let respondingModelIndex;
 
-                    const modelIndex = orderedIndices[i];
-                    const model = models[modelIndex];
-                    const assistantMessage = {
-                        role: 'assistant',
-                        content: '',
-                        thinking: '',
-                        images: [],
-                        modelName: model.name,
-                        timestamp: new Date().toISOString()
-                    };
-                    currentConversation.push(assistantMessage);
-                    renderConversation();
-
-                    try {
-                        await streamResponse(model, assistantMessage);
-                    } catch (error) {
-                        console.error('Error in rotating mode:', error);
-                        // Set error message in the assistant message instead of empty content
-                        assistantMessage.content = `Error: ${error.message}`;
-                        renderConversation();
-                    }
-
-                    // Save and render after each model completes so next model sees the response
-                    saveToStorage();
-                    renderConversation();
-
-                    // Add delay before next model (unless it's the last model of the last iteration)
-                    if (responseDelay > 0 && !(iteration === iterationCount - 1 && i === orderedIndices.length - 1)) {
-                        await new Promise(resolve => setTimeout(resolve, responseDelay));
+                if (forcedModelIndex !== null && selectedModelIndices.includes(forcedModelIndex)) {
+                    // Use forced model and clear it
+                    respondingModelIndex = forcedModelIndex;
+                    forcedModelIndex = null;
+                    console.log('Using forced model:', models[respondingModelIndex].name);
+                } else {
+                    // Conduct voting round
+                    respondingModelIndex = await conductVotingRound();
+                    if (respondingModelIndex === null) {
+                        console.error('No valid votes received, skipping round');
+                        continue;
                     }
                 }
 
-                // Increment rotation for next iteration
-                rotationIndex++;
+                const model = models[respondingModelIndex];
+                const assistantMessage = {
+                    role: 'assistant',
+                    content: '',
+                    thinking: '',
+                    images: [],
+                    modelName: model.name,
+                    timestamp: new Date().toISOString()
+                };
+                currentConversation.push(assistantMessage);
+                renderConversation();
+
+                try {
+                    await streamResponse(model, assistantMessage);
+                } catch (error) {
+                    console.error('Error in vote mode:', error);
+                    assistantMessage.content = `Error: ${error.message}`;
+                    renderConversation();
+                }
+
                 saveToStorage();
+                renderConversation();
+
+                // Add delay before next iteration (unless it's the last)
+                if (responseDelay > 0 && iteration < iterationCount - 1) {
+                    await new Promise(resolve => setTimeout(resolve, responseDelay));
+                }
             }
         }
 
-        async function handleAutonomousRound() {
-            // Check if user stopped generation
-            if (userStoppedGeneration || !isAutonomousRunning) {
-                console.log('User stopped generation or autonomous mode ended');
+        async function conductVotingRound() {
+            // Use instance index (position in selectedModelIndices) as key to handle duplicate model indices
+            const votes = {};           // { instanceIndex: voteValue }
+            const instanceToModel = {}; // { instanceIndex: modelIndex }
+            const rawResponses = {};    // { instanceIndex: rawResponse } for debugging
+            const retryNeeded = new Set();
+            const defaultVotes = new Set(); // Track which instances got default votes
+            const expectedVoters = selectedModelIndices.length;
+
+            console.log('Starting voting round with models:', selectedModelIndices.map(i => models[i].name));
+            console.log(`Expecting ${expectedVoters} votes`);
+
+            // First round: All models vote in parallel
+            const votePromises = selectedModelIndices.map(async (modelIndex, instanceIndex) => {
+                const model = models[modelIndex];
+                instanceToModel[instanceIndex] = modelIndex;
+                try {
+                    const result = await getModelVote(model, modelIndex, false);
+                    rawResponses[instanceIndex] = result.raw;
+                    if (isValidVote(result.vote)) {
+                        votes[instanceIndex] = parseFloat(result.vote);
+                        console.log(`${model.name} (instance ${instanceIndex}) voted: ${result.vote} (${Object.keys(votes).length}/${expectedVoters} received)`);
+                    } else {
+                        console.log(`${model.name} (instance ${instanceIndex}) invalid vote: "${result.vote}" (raw: "${result.raw}"), will retry`);
+                        retryNeeded.add(instanceIndex);
+                    }
+                } catch (error) {
+                    console.error(`Vote error for ${model.name} (instance ${instanceIndex}):`, error);
+                    rawResponses[instanceIndex] = `ERROR: ${error.message}`;
+                    retryNeeded.add(instanceIndex);
+                }
+            });
+
+            // Wait for ALL vote promises to complete
+            console.log('Waiting for all votes to complete...');
+            await Promise.all(votePromises);
+            console.log(`All initial votes received. Valid: ${Object.keys(votes).length}, Need retry: ${retryNeeded.size}`);
+
+            // Retry once for invalid votes
+            if (retryNeeded.size > 0) {
+                console.log('Retrying votes for:', Array.from(retryNeeded).map(i => models[instanceToModel[i]].name));
+                const retryPromises = Array.from(retryNeeded).map(async (instanceIndex) => {
+                    const modelIndex = instanceToModel[instanceIndex];
+                    const model = models[modelIndex];
+                    try {
+                        const result = await getModelVote(model, modelIndex, true);
+                        rawResponses[instanceIndex] = result.raw; // Update with retry response
+                        if (isValidVote(result.vote)) {
+                            votes[instanceIndex] = parseFloat(result.vote);
+                            console.log(`${model.name} (instance ${instanceIndex}) retry voted: ${result.vote}`);
+                        } else {
+                            // Assign default vote of 5.0 - models must participate
+                            votes[instanceIndex] = 5.0;
+                            defaultVotes.add(instanceIndex);
+                            console.log(`${model.name} (instance ${instanceIndex}) still invalid after retry: "${result.vote}" (raw: "${result.raw}"), assigning default vote 5.0`);
+                        }
+                    } catch (error) {
+                        // Assign default vote of 5.0 on error - models must participate
+                        votes[instanceIndex] = 5.0;
+                        defaultVotes.add(instanceIndex);
+                        rawResponses[instanceIndex] = `RETRY ERROR: ${error.message}`;
+                        console.error(`Retry vote error for ${model.name} (instance ${instanceIndex}):`, error, '- assigning default vote 5.0');
+                    }
+                });
+
+                await Promise.all(retryPromises);
+            }
+
+            // Apply debiasing and determine winner (pass instanceToModel for model name lookups)
+            const adjustedVotes = applyDebiasing(votes, instanceToModel);
+            const winnerInstanceIndex = determineWinner(adjustedVotes, instanceToModel);
+            const winnerModelIndex = instanceToModel[winnerInstanceIndex];
+
+            console.log('Final votes:', Object.entries(votes).map(([i, v]) => `${models[instanceToModel[i]].name}: ${v.toFixed(2)}`));
+            console.log('Adjusted votes:', Object.entries(adjustedVotes).map(([i, v]) => `${models[instanceToModel[i]].name}: ${v.toFixed(2)}`));
+            console.log('Raw responses:', rawResponses);
+            console.log('Winner:', models[winnerModelIndex].name);
+
+            // Show vote results in UI
+            showVoteResults(votes, adjustedVotes, winnerInstanceIndex, instanceToModel, defaultVotes, rawResponses);
+
+            return winnerModelIndex;
+        }
+
+        function showVoteResults(rawVotes, adjustedVotes, winnerInstanceIndex, instanceToModel, defaultVotes = new Set(), rawResponses = {}) {
+            // Create a notification showing vote results
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 60px;
+                right: 20px;
+                background: #2a2a2a;
+                border: 1px solid #4a4a4a;
+                border-radius: 8px;
+                padding: 12px 16px;
+                z-index: 10000;
+                font-size: 13px;
+                color: #e0e0e0;
+                max-width: 320px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            `;
+
+            // Handle error case (passed as string in 5th param for backwards compat)
+            if (typeof defaultVotes === 'string') {
+                notification.innerHTML = `<div style="color: #ff6b6b; font-weight: bold;">${defaultVotes}</div>`;
+                document.body.appendChild(notification);
+                setTimeout(() => {
+                    notification.style.transition = 'opacity 0.3s';
+                    notification.style.opacity = '0';
+                    setTimeout(() => notification.remove(), 300);
+                }, 5000);
                 return;
             }
 
-            // In autonomous mode, models converse with each other in rotating order
-            const orderedIndices = [...selectedModelIndices];
+            let html = '<div style="font-weight: bold; margin-bottom: 8px; color: #4a9eff;">Vote Results</div>';
+            html += '<table style="width: 100%; border-collapse: collapse;">';
+            html += '<tr style="color: #888; font-size: 11px;"><th style="text-align: left; padding: 2px 4px;">Model</th><th style="text-align: right; padding: 2px 4px;">Raw</th><th style="text-align: right; padding: 2px 4px;">Adj</th></tr>';
 
-            // Rotate based on rotationIndex
-            for (let i = 0; i < rotationIndex % orderedIndices.length; i++) {
-                orderedIndices.push(orderedIndices.shift());
+            // Sort by adjusted vote descending
+            const sortedEntries = Object.entries(adjustedVotes).sort((a, b) => b[1] - a[1]);
+
+            for (const [instanceIdx, adjVote] of sortedEntries) {
+                const rawVote = rawVotes[instanceIdx] || 0;
+                const modelIndex = instanceToModel[instanceIdx];
+                const modelName = models[modelIndex].name;
+                const isWinner = parseInt(instanceIdx) === winnerInstanceIndex;
+                const isDefault = defaultVotes.has(parseInt(instanceIdx));
+                const rowStyle = isWinner ? 'background: #3a4a3a; font-weight: bold;' : '';
+                const nameStyle = isWinner ? 'color: #4aff4a;' : '';
+                const defaultMarker = isDefault ? ' <span style="color: #ff9f43; font-size: 10px;">(def)</span>' : '';
+                html += `<tr style="${rowStyle}">
+                    <td style="padding: 3px 4px; ${nameStyle}">${isWinner ? '★ ' : ''}${modelName.substring(0, 18)}${modelName.length > 18 ? '...' : ''}${defaultMarker}</td>
+                    <td style="text-align: right; padding: 3px 4px;">${rawVote.toFixed(1)}</td>
+                    <td style="text-align: right; padding: 3px 4px;">${adjVote.toFixed(1)}</td>
+                </tr>`;
+            }
+            html += '</table>';
+
+            // Show average
+            const avgRaw = Object.values(rawVotes).reduce((a, b) => a + b, 0) / Object.keys(rawVotes).length;
+            const avgAdj = Object.values(adjustedVotes).reduce((a, b) => a + b, 0) / Object.keys(adjustedVotes).length;
+            html += `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #4a4a4a; font-size: 11px; color: #888;">
+                Avg: Raw ${avgRaw.toFixed(1)} | Adj ${avgAdj.toFixed(1)}
+            </div>`;
+
+            // Add raw responses section (collapsible)
+            if (Object.keys(rawResponses).length > 0) {
+                const detailsId = 'vote-details-' + Date.now();
+                html += `<div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #4a4a4a;">
+                    <div style="cursor: pointer; font-size: 11px; color: #888;" onclick="document.getElementById('${detailsId}').style.display = document.getElementById('${detailsId}').style.display === 'none' ? 'block' : 'none'">
+                        ▶ Show raw responses
+                    </div>
+                    <div id="${detailsId}" style="display: none; margin-top: 8px; font-size: 10px; max-height: 150px; overflow-y: auto;">`;
+                for (const [instanceIdx, raw] of Object.entries(rawResponses)) {
+                    const modelIndex = instanceToModel[instanceIdx];
+                    const modelName = models[modelIndex]?.name || 'Unknown';
+                    const truncatedRaw = (raw || '(empty)').substring(0, 100);
+                    html += `<div style="margin-bottom: 4px; padding: 4px; background: #1a1a1a; border-radius: 4px;">
+                        <span style="color: #4a9eff;">${modelName}:</span>
+                        <span style="color: #aaa; word-break: break-all;">"${truncatedRaw}"</span>
+                    </div>`;
+                }
+                html += `</div></div>`;
             }
 
-            // Pick the next model in rotation
-            const modelIndex = orderedIndices[0];
-            const model = models[modelIndex];
+            notification.innerHTML = html;
 
-            const assistantMessage = {
-                role: 'assistant',
-                content: '',
-                thinking: '',
-                images: [],
-                modelName: model.name,
-                timestamp: new Date().toISOString()
+            // Add close button
+            const closeBtn = document.createElement('span');
+            closeBtn.innerHTML = '×';
+            closeBtn.style.cssText = 'position: absolute; top: 8px; right: 12px; cursor: pointer; font-size: 18px; color: #888;';
+            closeBtn.onclick = () => notification.remove();
+            notification.style.position = 'fixed';
+            notification.appendChild(closeBtn);
+
+            document.body.appendChild(notification);
+
+            // Auto-remove after 15 seconds (longer to allow viewing raw responses)
+            setTimeout(() => {
+                notification.style.transition = 'opacity 0.3s';
+                notification.style.opacity = '0';
+                setTimeout(() => notification.remove(), 300);
+            }, 15000);
+        }
+
+        async function getModelVote(model, modelIndex, isRetry = false) {
+            // Build a simple, clear voting prompt
+            const votingSystemPrompt = `Output a single number between 0.1 and 10.0 (inclusive). This number represents how much you want to respond next.
+
+OUTPUT ONLY THE NUMBER. Nothing else. Examples: 7.5, 3.2, 10.0, 0.1
+
+${isRetry ? 'YOUR PREVIOUS RESPONSE WAS INVALID. You must output ONLY a number between 0.1 and 10.0.' : ''}`;
+
+            // Build messages for voting context (ephemeral, not saved)
+            const messages = buildMessagesForAPI(model, null);
+
+            // Add voting prompt at the end
+            const votingMessages = [
+                { role: 'system', content: votingSystemPrompt },
+                ...messages,
+                { role: 'user', content: 'Vote 0.1-10.0:' }
+            ];
+
+            const apiKey = resolveApiKey(model);
+
+            const body = {
+                model: model.model_id,
+                messages: votingMessages,
+                max_tokens: 10,
+                temperature: 0.3,  // Low temperature for consistent voting
+                stream: false      // Explicitly disable streaming
             };
 
-            currentConversation.push(assistantMessage);
-            renderConversation();
+            // Add timeout to prevent hanging - 30 seconds should be plenty for a vote
+            const controller = new AbortController();
+            const timeoutMs = 30000;
+            const timeoutId = setTimeout(() => {
+                console.log(`Vote timeout for ${model.name} after ${timeoutMs}ms`);
+                controller.abort();
+            }, timeoutMs);
 
             try {
-                await streamResponse(model, assistantMessage);
+                console.log(`Requesting vote from ${model.name}...`);
+                const response = await fetch(model.endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`,
+                        'HTTP-Referer': window.location.href,
+                        'X-Title': 'OpenRouter Multi-Model Chat - Voting'
+                    },
+                    body: JSON.stringify(body),
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    const errorText = await response.text().catch(() => '');
+                    throw new Error(`API error ${response.status}: ${errorText.substring(0, 100)}`);
+                }
+
+                const data = await response.json();
+                const rawContent = data.choices?.[0]?.message?.content?.trim() || '';
+                console.log(`${model.name} raw response: "${rawContent}"`);
+                console.log(`${model.name} full API response:`, JSON.stringify(data).substring(0, 500));
+
+                // Strip thinking/reasoning tags (various formats used by different models)
+                let content = rawContent;
+                content = content.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '');
+                content = content.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '');
+                content = content.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
+                content = content.replace(/<reflection>[\s\S]*?<\/reflection>/gi, '');
+                content = content.trim();
+
+                // Find ALL numbers in the response and take the LAST one
+                // This handles cases where models put preambles or explanations
+                const allMatches = content.match(/\d+\.?\d*/g);
+                if (allMatches && allMatches.length > 0) {
+                    const lastNumber = allMatches[allMatches.length - 1];
+                    console.log(`${model.name} extracted vote: ${lastNumber} (from ${allMatches.length} number(s) found)`);
+                    return { vote: lastNumber, raw: rawContent };
+                }
+                return { vote: content, raw: rawContent };
             } catch (error) {
-                console.error('Error in autonomous round:', error);
-                // Set error message in the assistant message instead of empty content
-                assistantMessage.content = `Error: ${error.message}`;
-                renderConversation();
+                clearTimeout(timeoutId);
+                if (error.name === 'AbortError') {
+                    throw new Error(`Vote request timed out after ${timeoutMs/1000}s`);
+                }
+                throw error;
+            }
+        }
+
+        function isValidVote(vote) {
+            const num = parseFloat(vote);
+            return !isNaN(num) && num >= 0.1 && num <= 10.0;
+        }
+
+        function applyDebiasing(votes, instanceToModel) {
+            if (!enableDebiasing) {
+                return { ...votes };
             }
 
+            const adjustedVotes = {};
+
+            for (const [instanceIndex, rawVote] of Object.entries(votes)) {
+                const modelIndex = instanceToModel[instanceIndex];
+                const model = models[modelIndex];
+                const modelName = model.name;
+
+                // Get vote history for this model (shared across instances)
+                const history = voteHistory[modelName] || [];
+
+                // Store raw vote in history
+                if (!voteHistory[modelName]) {
+                    voteHistory[modelName] = [];
+                }
+                voteHistory[modelName].push(rawVote);
+
+                // Trim history to configured length
+                if (voteHistory[modelName].length > voteHistoryLength) {
+                    voteHistory[modelName] = voteHistory[modelName].slice(-voteHistoryLength);
+                }
+
+                // Apply z-score normalization if we have enough history (at least 3 votes)
+                if (history.length >= 3) {
+                    const mean = history.reduce((a, b) => a + b, 0) / history.length;
+                    const variance = history.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / history.length;
+                    const stddev = Math.sqrt(variance);
+
+                    if (stddev > 0.01) {
+                        // Z-score: how many std devs above/below mean
+                        adjustedVotes[instanceIndex] = (rawVote - mean) / stddev;
+                    } else {
+                        // Near-zero stddev (all votes ~same), use 0 (neutral)
+                        adjustedVotes[instanceIndex] = 0;
+                    }
+                } else {
+                    // Insufficient history - use raw vote scaled to rough z-score range
+                    // Center around 5 (middle of 0-10 scale), treat 2.5 as ~1 stddev
+                    adjustedVotes[instanceIndex] = (rawVote - 5) / 2.5;
+                }
+            }
+
+            // Save updated vote history
             saveToStorage();
 
-            // Increment rotation
-            rotationIndex++;
-            saveToStorage();
+            return adjustedVotes;
         }
+
+        function determineWinner(adjustedVotes, instanceToModel) {
+            // Find highest vote(s) - keys are instanceIndex
+            let maxVote = -1;
+            let winners = [];
+
+            for (const [instanceIndex, vote] of Object.entries(adjustedVotes)) {
+                if (vote > maxVote) {
+                    maxVote = vote;
+                    winners = [parseInt(instanceIndex)];
+                } else if (vote === maxVote) {
+                    winners.push(parseInt(instanceIndex));
+                }
+            }
+
+            if (winners.length === 1) {
+                const winnerModelIndex = instanceToModel[winners[0]];
+                console.log('Winner:', models[winnerModelIndex].name, 'with vote', maxVote.toFixed(2));
+                return winners[0]; // Return instanceIndex
+            }
+
+            // Tiebreaker: Model that responded furthest back wins
+            console.log('Tie between:', winners.map(i => models[instanceToModel[i]].name), '- using tiebreaker');
+            let oldestResponseIndex = Infinity;
+            let winnerInstanceIndex = winners[0];
+
+            for (const instanceIndex of winners) {
+                const modelIndex = instanceToModel[instanceIndex];
+                const modelName = models[modelIndex].name;
+                let lastResponseIdx = -1;
+
+                // Find last response from this model (search from end)
+                for (let i = currentConversation.length - 1; i >= 0; i--) {
+                    if (currentConversation[i].role === 'assistant' &&
+                        currentConversation[i].modelName === modelName) {
+                        lastResponseIdx = i;
+                        break;
+                    }
+                }
+
+                // Model with lowest (oldest) response index wins, or -1 if never responded
+                if (lastResponseIdx < oldestResponseIndex) {
+                    oldestResponseIndex = lastResponseIdx;
+                    winnerInstanceIndex = instanceIndex;
+                }
+            }
+
+            console.log('Tiebreaker winner:', models[instanceToModel[winnerInstanceIndex]].name);
+            return winnerInstanceIndex; // Return instanceIndex
+        }
+
+        // ========== End Vote Mode Functions ==========
 
         function resolveApiKey(model) {
             // If model has api_key_id, look up the key
@@ -2810,15 +3287,15 @@ CRITICAL: Do NOT mimic, impersonate, or generate responses for other participant
                 if (multiModelMode === 'parallel') {
                     // In parallel mode, each model converses with the user
                     allParticipants.push(userIdentifier);
-                } else if (multiModelMode === 'autonomous') {
-                    // In autonomous mode, only AI participants (no user)
+                } else if (multiModelMode === 'vote' && !humanParticipates) {
+                    // In vote mode without human, only AI participants (no user)
                     // Include all models from conversation history
                     const otherModels = getModelsInConversation()
                         .filter(name => name !== model.name)
                         .map(name => sanitizeModelName(name));
                     allParticipants.push(...otherModels);
                 } else {
-                    // In serial/rotating modes, include all participants equally
+                    // In vote mode with human, include all participants equally
                     allParticipants.push(userIdentifier);
                     // Include all models from conversation history
                     const otherModels = getModelsInConversation()
@@ -3514,11 +3991,14 @@ Simply respond directly as ${sanitizedName} with your own authentic perspective.
                         }
                     }
 
-                    // Add edit and regenerate buttons
+                    // Add edit, regenerate, and force next buttons
+                    const forceBtn = multiModelMode === 'vote' ?
+                        `<button onclick="forceModelByName('${msg.modelName.replace(/'/g, "\\'")}')">Force Next</button>` : '';
                     contentHtml += `
                         <div class="message-actions">
                             <button onclick="editAssistantMessageInline(${index})">Edit</button>
                             <button onclick="regenerateResponse(${index})">Regenerate</button>
+                            ${forceBtn}
                         </div>
                     `;
 
@@ -3742,12 +4222,8 @@ Simply respond directly as ${sanitizedName} with your own authentic perspective.
             try {
                 if (multiModelMode === 'parallel') {
                     await handleParallelMode();
-                } else if (multiModelMode === 'serial') {
-                    await handleSerialMode();
-                } else if (multiModelMode === 'rotating') {
-                    await handleRotatingMode();
-                } else if (multiModelMode === 'autonomous') {
-                    await handleAutonomousMode();
+                } else if (multiModelMode === 'vote') {
+                    await handleVoteMode();
                 }
             } catch (error) {
                 console.error('Error:', error);
@@ -3784,6 +4260,35 @@ Simply respond directly as ${sanitizedName} with your own authentic perspective.
             hideStopButton();
             renderConversation();
             saveToStorage();
+        }
+
+        function forceModelByName(modelName) {
+            // Find the model index by name
+            const index = models.findIndex(m => m.name === modelName);
+            if (index === -1) {
+                alert(`Model "${modelName}" not found in your model list`);
+                return;
+            }
+
+            // Check if model is currently selected
+            if (!selectedModelIndices.includes(index)) {
+                alert(`Model "${modelName}" is not currently selected. Select it in the model picker first.`);
+                return;
+            }
+
+            if (multiModelMode !== 'vote') {
+                alert('Force model only works in Vote mode');
+                return;
+            }
+
+            forcedModelIndex = index;
+
+            // Show notification
+            const notification = document.createElement('div');
+            notification.style.cssText = 'position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #4a9eff; color: white; padding: 10px 20px; border-radius: 8px; z-index: 10000; font-size: 14px;';
+            notification.textContent = `${modelName} will respond next (bypasses voting)`;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 2000);
         }
 
         async function regenerateResponse(index) {
