@@ -860,7 +860,12 @@
                 </ul>
 
                 <h4>Force Model</h4>
-                <p>In Vote mode, click a model's name in the model picker to force it to respond next, bypassing voting entirely.</p>
+                <p>In Vote mode, you can force a specific model to respond next, bypassing voting:</p>
+                <ul>
+                    <li><strong>From Model Picker:</strong> Click a model's name (not checkbox) to force it</li>
+                    <li><strong>From Chat:</strong> Click "Force Next" button on any assistant message</li>
+                </ul>
+                <p>The forced model responds once, then normal voting resumes.</p>
 
                 <h4>Debiasing</h4>
                 <p>Debiasing normalizes votes across models with different voting tendencies:</p>
@@ -3001,21 +3006,27 @@
         }
 
         async function getModelVote(model, modelIndex, isRetry = false) {
-            // Build a simple, clear voting prompt
-            const votingSystemPrompt = `Output a single number between 0.1 and 10.0 (inclusive). This number represents how much you want to respond next.
+            // Build voting prompt - clear, contextual, and mandatory
+            const votingSystemPrompt = `You are in a multi-model group chat. Multiple AI models take turns responding. A voting system determines who speaks next.
 
-OUTPUT ONLY THE NUMBER. Nothing else. Examples: 7.5, 3.2, 10.0, 0.1
+YOUR TASK: Vote on how much you want to respond next to this conversation.
+OUTPUT: A single number from 0.1 to 10.0 (higher = more eager to respond)
 
-${isRetry ? 'YOUR PREVIOUS RESPONSE WAS INVALID. You must output ONLY a number between 0.1 and 10.0.' : ''}`;
+RESPOND WITH ONLY THE NUMBER. No words, no explanation. Just a number like: 7.5
+
+${isRetry ? 'WARNING: Your previous response was invalid. You MUST output only a number between 0.1 and 10.0. Example: 7.5' : ''}`;
 
             // Build messages for voting context (ephemeral, not saved)
             const messages = buildMessagesForAPI(model, null);
 
+            // Filter out any system messages from the conversation to avoid conflicts
+            const conversationOnly = messages.filter(m => m.role !== 'system');
+
             // Add voting prompt at the end
             const votingMessages = [
                 { role: 'system', content: votingSystemPrompt },
-                ...messages,
-                { role: 'user', content: 'Vote 0.1-10.0:' }
+                ...conversationOnly,
+                { role: 'user', content: '[VOTING REQUIRED] Rate your eagerness to respond (0.1-10.0):' }
             ];
 
             const apiKey = resolveApiKey(model);
@@ -3023,7 +3034,7 @@ ${isRetry ? 'YOUR PREVIOUS RESPONSE WAS INVALID. You must output ONLY a number b
             const body = {
                 model: model.model_id,
                 messages: votingMessages,
-                max_tokens: 10,
+                max_tokens: 20,   // Slightly more room for models that prefix
                 temperature: 0.3,  // Low temperature for consistent voting
                 stream: false      // Explicitly disable streaming
             };

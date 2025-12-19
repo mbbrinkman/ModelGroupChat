@@ -1,19 +1,19 @@
-# OpenRouter Multi-Model Chat
+# Multi-Model Group Chat
 
 A single-file web application for chatting with multiple AI models simultaneously through OpenRouter's unified API.
 
 ## Live Demo
 
-https://mbbrinkman.github.io/my_api_chat/api-chat.html
+https://mbbrinkman.github.io/ModelGroupChat/groupchat.html
 
 ## Features
 
 ### Multi-Model Conversation Modes
 - **Parallel**: All selected models respond independently to each message
-- **Vote**: Models vote (0.1-10.0) on who responds next; winner gives the response
-  - Debiasing normalizes voting patterns via z-score
-  - Human participation toggle for autonomous conversations
-  - Force-model feature to bypass voting (click model name)
+- **Vote**: Models vote (0.1-10.0) on who responds next; highest vote wins
+  - Z-score debiasing normalizes voting patterns across models
+  - Human participation toggle for fully autonomous AI conversations
+  - Force model: click model name in picker, or "Force Next" button on messages
 
 ### Core Functionality
 - Real-time streaming responses
@@ -35,7 +35,7 @@ https://mbbrinkman.github.io/my_api_chat/api-chat.html
 
 ## Setup
 
-1. Open the application at https://mbbrinkman.github.io/my_api_chat/api-chat.html
+1. Open the application at https://mbbrinkman.github.io/ModelGroupChat/groupchat.html
 2. Create an OpenRouter account and obtain an API key at https://openrouter.ai/keys
 3. In Settings, add your API key
 4. Browse available models using the model browser, or manually add a model configuration
@@ -65,7 +65,7 @@ Example model IDs:
 
 ## Technical Details
 
-- Single HTML file application (~4200 lines)
+- Single HTML file application (~4500 lines)
 - No build process or dependencies required
 - Client-side JavaScript only
 - Uses KaTeX (via CDN) for LaTeX math rendering
