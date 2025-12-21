@@ -2424,8 +2424,11 @@
         }
 
         function selectModel(modelId, modelName) {
+            // Strip company prefix (e.g., "Anthropic: Claude 3 Opus" -> "Claude 3 Opus")
+            const cleanName = modelName.replace(/^[^:]+:\s*/, '');
+
             // Populate the Add New Model form
-            document.getElementById('new-model-name').value = modelName;
+            document.getElementById('new-model-name').value = cleanName;
 
             // Get the current config template
             const configTextarea = document.getElementById('new-model-config');
