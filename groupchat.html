@@ -696,6 +696,12 @@
                         </div>
                     </div>
                     <div class="mode-selector" style="margin-top: 10px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="show-vote-results-checkbox" checked style="width: auto;">
+                            <span>Show vote results popup</span>
+                        </label>
+                    </div>
+                    <div class="mode-selector" style="margin-top: 10px;">
                         <label for="iteration-count">Iterations:</label>
                         <input type="number" id="iteration-count" min="1" max="100" value="1" style="width: 80px; padding: 4px 8px; background: #2a2a2a; border: 1px solid #4a4a4a; color: #e0e0e0; border-radius: 4px;">
                         <span style="font-size: 12px; color: #888; margin-left: 8px;">How many times models should reply</span>
@@ -1085,6 +1091,7 @@
         // Vote mode state
         let humanParticipates = true;      // Whether human participates in conversation (Vote mode)
         let enableDebiasing = true;        // Enable z-score normalization on votes
+        let showVoteResultsPopup = true;   // Show vote results popup after each round
         let voteHistoryLength = 10;        // Track last N votes per model for debiasing
         let voteHistory = {};              // { modelName: [vote1, vote2, ...] }
         let forcedModelIndex = null;       // Force specific model to respond next (bypasses voting)
@@ -1196,6 +1203,7 @@
                 // Vote mode settings
                 humanParticipates = await loadData('humanParticipates', true);
                 enableDebiasing = await loadData('enableDebiasing', true);
+                showVoteResultsPopup = await loadData('showVoteResultsPopup', true);
                 voteHistoryLength = await loadData('voteHistoryLength', 10);
                 voteHistory = await loadData('voteHistory', {});
                 messageHistoryLimit = await loadData('messageHistoryLimit', 0);
@@ -1227,6 +1235,7 @@
                     saveData('iterationCount', iterationCount),
                     saveData('humanParticipates', humanParticipates),
                     saveData('enableDebiasing', enableDebiasing),
+                    saveData('showVoteResultsPopup', showVoteResultsPopup),
                     saveData('voteHistoryLength', voteHistoryLength),
                     saveData('voteHistory', voteHistory),
                     saveData('messageHistoryLimit', messageHistoryLimit),
@@ -1357,6 +1366,15 @@
             if (enableDebiasingCheckbox) {
                 enableDebiasingCheckbox.addEventListener('change', (e) => {
                     enableDebiasing = e.target.checked;
+                    saveToStorage();
+                });
+            }
+
+            // Show vote results popup checkbox (Vote mode)
+            const showVoteResultsCheckbox = document.getElementById('show-vote-results-checkbox');
+            if (showVoteResultsCheckbox) {
+                showVoteResultsCheckbox.addEventListener('change', (e) => {
+                    showVoteResultsPopup = e.target.checked;
                     saveToStorage();
                 });
             }
@@ -1869,6 +1887,12 @@
             const enableDebiasingCheckbox = document.getElementById('enable-debiasing-checkbox');
             if (enableDebiasingCheckbox) {
                 enableDebiasingCheckbox.checked = enableDebiasing;
+            }
+
+            // Set the show vote results checkbox (Vote mode)
+            const showVoteResultsCheckbox = document.getElementById('show-vote-results-checkbox');
+            if (showVoteResultsCheckbox) {
+                showVoteResultsCheckbox.checked = showVoteResultsPopup;
             }
 
             // Set the vote history length input (Vote mode)
@@ -2905,6 +2929,9 @@
         }
 
         function showVoteResults(rawVotes, adjustedVotes, winnerInstanceIndex, instanceToModel, defaultVotes = new Set(), rawResponses = {}) {
+            // Skip if vote results popup is disabled
+            if (!showVoteResultsPopup) return;
+
             // Create a notification showing vote results
             const notification = document.createElement('div');
             notification.style.cssText = `
@@ -3007,10 +3034,16 @@
 
         async function getModelVote(model, modelIndex, isRetry = false) {
             // Build voting prompt - clear, contextual, and mandatory
-            const votingSystemPrompt = `You are in a multi-model group chat. Multiple AI models take turns responding. A voting system determines who speaks next.
+            const sanitizedName = sanitizeModelName(model.name);
+            const votingSystemPrompt = `You are ${sanitizedName} in a multi-model group chat. A voting system determines who speaks next.
 
-YOUR TASK: Vote on how much you want to respond next to this conversation.
-OUTPUT: A single number from 0.1 to 10.0 (higher = more eager to respond)
+YOUR TASK: Rate from 0.1 to 10.0 how much you believe YOU (${sanitizedName}) should be the model to reply next.
+
+Consider both:
+- How much you have to contribute to this conversation
+- Whether another model might be better suited to respond first
+
+OUTPUT: A single number from 0.1 to 10.0 (higher = you should respond next)
 
 RESPOND WITH ONLY THE NUMBER. No words, no explanation. Just a number like: 7.5
 
@@ -3026,7 +3059,7 @@ ${isRetry ? 'WARNING: Your previous response was invalid. You MUST output only a
             const votingMessages = [
                 { role: 'system', content: votingSystemPrompt },
                 ...conversationOnly,
-                { role: 'user', content: '[VOTING REQUIRED] Rate your eagerness to respond (0.1-10.0):' }
+                { role: 'user', content: `[VOTING] How much should ${sanitizedName} respond next? (0.1-10.0):` }
             ];
 
             const apiKey = resolveApiKey(model);
@@ -3286,48 +3319,28 @@ ${isRetry ? 'WARNING: Your previous response was invalid. You MUST output only a
 
             if (needsIdentity) {
                 const sanitizedName = sanitizeModelName(model.name);
-                systemPrompt = `You are ${sanitizedName}. This is your identity in this conversation. You must ONLY respond as ${sanitizedName} - never simulate, roleplay, or speak as any other participant.
-
-CRITICAL: Do NOT mimic, impersonate, or generate responses for other participants. When you see messages from other models in the history, those are THEIR responses - do not continue their patterns, adopt their style, or pretend to be them. Your response should reflect YOUR unique perspective and capabilities, not theirs.
-
-`;
+                const now = new Date();
+                const dateTimeStr = now.toLocaleString();
 
                 // Build list of all participants - include models from history, not just currently selected
                 const allParticipants = [];
 
                 if (multiModelMode === 'parallel') {
-                    // In parallel mode, each model converses with the user
                     allParticipants.push(userIdentifier);
                 } else if (multiModelMode === 'vote' && !humanParticipates) {
-                    // In vote mode without human, only AI participants (no user)
-                    // Include all models from conversation history
                     const otherModels = getModelsInConversation()
                         .filter(name => name !== model.name)
                         .map(name => sanitizeModelName(name));
                     allParticipants.push(...otherModels);
                 } else {
-                    // In vote mode with human, include all participants equally
                     allParticipants.push(userIdentifier);
-                    // Include all models from conversation history
                     const otherModels = getModelsInConversation()
                         .filter(name => name !== model.name)
                         .map(name => sanitizeModelName(name));
                     allParticipants.push(...otherModels);
                 }
 
-                if (allParticipants.length > 0) {
-                    systemPrompt += `You are conversing with: ${allParticipants.join(', ')}.
-
-Messages in the format "X said: ..." are FROM participant X - this is conversation history, not a prompt to continue as X. You are ${sanitizedName}. Respond only as yourself.
-
-Do NOT:
-- Generate responses on behalf of other participants
-- Adopt the speaking style or quirks of other models you see in history
-- Prefix your response with "${sanitizedName} said:" or any label
-- Add extra formatting or leading newlines
-
-Simply respond directly as ${sanitizedName} with your own authentic perspective.\n\n`;
-                }
+                systemPrompt = `You are ${sanitizedName}. The date and time is ${dateTimeStr}. You are in a chat with ${allParticipants.join(', ')}.\n\n`;
             }
 
             // Use activePromptId if set, otherwise fall back to model's system_prompt
