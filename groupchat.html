@@ -3263,10 +3263,12 @@ ${isRetry ? 'WARNING: Your previous response was invalid. You MUST output only a
                 return 'Unknown Model';
             }
 
-            // Remove control characters and normalize whitespace
+            // Strip company prefix (e.g., "Anthropic: Claude 3 Opus" -> "Claude 3 Opus")
+            // and remove control characters, normalize whitespace in one pass
             let sanitized = name
-                .replace(/[\r\n\t]+/g, ' ')  // Replace newlines and tabs with spaces
-                .replace(/\s+/g, ' ')         // Collapse multiple spaces
+                .replace(/^[^:]+:\s*/, '')    // Strip company prefix
+                .replace(/[\r\n\t]+/g, ' ')   // Replace newlines and tabs with spaces
+                .replace(/\s+/g, ' ')          // Collapse multiple spaces
                 .trim();
 
             // Limit length to prevent abuse
@@ -3397,6 +3399,9 @@ ${isRetry ? 'WARNING: Your previous response was invalid. You MUST output only a
                 }
             }
 
+            // Cache multi-model check - called once per message in the loop, but result doesn't change
+            const isMultiModel = isMultiModelContext();
+
             for (const msg of conversationToUse) {
                 if (msg === excludeMessage) continue; // Skip the message we're currently generating
 
@@ -3416,7 +3421,7 @@ ${isRetry ? 'WARNING: Your previous response was invalid. You MUST output only a
                             let textContent = msg.content.trim();
 
                             // With multiple models (or history from multiple), prefix user messages for flat hierarchy
-                            if (isMultiModelContext()) {
+                            if (isMultiModel) {
                                 textContent = `${userIdentifier} said: ${textContent}`;
                             }
 
@@ -3454,7 +3459,7 @@ ${isRetry ? 'WARNING: Your previous response was invalid. You MUST output only a
                         content = (msg.content || '').trim();
 
                         // With multiple models (or history from multiple), prefix user messages for flat hierarchy
-                        if (isMultiModelContext()) {
+                        if (isMultiModel) {
                             content = `${userIdentifier} said: ${content}`;
                         }
                     }
@@ -3494,7 +3499,7 @@ ${isRetry ? 'WARNING: Your previous response was invalid. You MUST output only a
 
                     // With multiple models (or history from multiple): use 'user' role with name prefix for flat hierarchy
                     // With single model: keep traditional 'assistant' role
-                    if (isMultiModelContext()) {
+                    if (isMultiModel) {
                         if (msg.modelName) {
                             const sanitizedModelName = sanitizeModelName(msg.modelName);
                             content = `${sanitizedModelName} said: ${content}`;
